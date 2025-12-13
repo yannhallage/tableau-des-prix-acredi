@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Calculator, Save, RotateCcw, CheckCircle } from 'lucide-react';
+import { Calculator, Save, RotateCcw, MessageSquareText } from 'lucide-react';
 
 export default function CalculatorPage() {
   const { user } = useAuth();
@@ -60,6 +60,69 @@ export default function CalculatorPage() {
       recommendedPrice,
     };
   }, [activeRates, roleDays, selectedClientType, selectedMargin, clientTypes]);
+
+  // Generate justification for the price
+  const justification = useMemo(() => {
+    if (calculations.internalCost === 0) return null;
+
+    const clientType = clientTypes.find(c => c.id === selectedClientType);
+    const projectType = projectTypes.find(p => p.id === selectedProjectType);
+    
+    const usedRoles = activeRates
+      .filter(rate => (roleDays[rate.id] || 0) > 0)
+      .map(rate => ({
+        name: rate.roleName,
+        days: roleDays[rate.id],
+        cost: roleDays[rate.id] * rate.rate,
+      }));
+
+    const totalDays = usedRoles.reduce((sum, r) => sum + r.days, 0);
+
+    const points: string[] = [];
+
+    // Argument 1: Team composition
+    if (usedRoles.length > 0) {
+      const teamList = usedRoles.map(r => `${r.name} (${r.days} jour${r.days > 1 ? 's' : ''})`).join(', ');
+      points.push(`Une équipe pluridisciplinaire de ${usedRoles.length} expert${usedRoles.length > 1 ? 's' : ''} sera mobilisée : ${teamList}.`);
+    }
+
+    // Argument 2: Project complexity
+    if (projectType) {
+      const complexityText = projectType.complexityLevel === 'high' 
+        ? 'Ce projet présente une complexité élevée nécessitant une expertise approfondie et un suivi rigoureux.'
+        : projectType.complexityLevel === 'medium'
+        ? 'Ce projet requiert une approche méthodique et une expertise confirmée pour garantir des livrables de qualité.'
+        : "Ce projet bénéficiera d'une exécution efficace grâce à notre maîtrise de ce type de prestation.";
+      points.push(complexityText);
+    }
+
+    // Argument 3: Client type coefficient justification
+    if (clientType && clientType.coefficient !== 1) {
+      if (clientType.coefficient > 1) {
+        points.push(`Le tarif reflète les exigences spécifiques des ${clientType.name.toLowerCase()}, incluant un niveau de service premium, des délais de validation adaptés et un accompagnement personnalisé.`);
+      } else {
+        points.push(`Un tarif préférentiel est appliqué pour soutenir les ${clientType.name.toLowerCase()} dans leur développement.`);
+      }
+    }
+
+    // Argument 4: Total investment context
+    points.push(`L'investissement total de ${totalDays} jour${totalDays > 1 ? 's' : ''} de travail garantit une prestation complète, de la conception à la livraison finale.`);
+
+    // Argument 5: Margin justification
+    if (calculations.marginValue > 0) {
+      const marginText = calculations.marginValue >= 50
+        ? 'La marge appliquée couvre les risques projet, les ajustements potentiels et assure la pérennité de notre accompagnement.'
+        : calculations.marginValue >= 40
+        ? 'La marge inclut la gestion de projet, le suivi qualité et notre garantie de satisfaction.'
+        : 'Une marge compétitive est appliquée tout en maintenant notre standard de qualité.';
+      points.push(marginText);
+    }
+
+    // Argument 6: Value proposition
+    points.push("Ce tarif intègre notre expertise sectorielle, nos méthodologies éprouvées et notre engagement qualité qui font la réputation d'Acredi Group.");
+
+    return points;
+  }, [calculations, selectedClientType, selectedProjectType, activeRates, roleDays, clientTypes, projectTypes]);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('fr-FR', {
@@ -290,6 +353,26 @@ export default function CalculatorPage() {
                   {formatCurrency(calculations.recommendedPrice)}
                 </p>
               </div>
+
+              {/* Justification Section */}
+              {justification && justification.length > 0 && (
+                <div className="mt-6 p-4 rounded-xl bg-muted/50 border border-border">
+                  <div className="flex items-center gap-2 mb-3">
+                    <MessageSquareText className="h-4 w-4 text-primary" />
+                    <h3 className="text-sm font-semibold text-foreground">
+                      Arguments de Justification
+                    </h3>
+                  </div>
+                  <ul className="space-y-2">
+                    {justification.map((point, index) => (
+                      <li key={index} className="flex gap-2 text-sm text-muted-foreground">
+                        <span className="text-primary font-bold shrink-0">•</span>
+                        <span>{point}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               {/* Actions */}
               <div className="flex gap-3 mt-6">
