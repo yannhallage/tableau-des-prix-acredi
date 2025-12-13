@@ -23,6 +23,8 @@ interface DataContextType {
   addClientType: (type: Omit<ClientType, 'id'>) => void;
   deleteClientType: (id: string) => void;
   updateMargin: (margin: Margin) => void;
+  addMargin: (margin: Omit<Margin, 'id'>) => void;
+  deleteMargin: (id: string) => void;
   updateProjectType: (type: ProjectType) => void;
   addProjectType: (type: Omit<ProjectType, 'id'>) => void;
   deleteProjectType: (id: string) => void;
@@ -92,6 +94,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setMargins(prev => prev.map(m => m.id === margin.id ? margin : m));
   };
 
+  const addMargin = (margin: Omit<Margin, 'id'>) => {
+    setMargins(prev => [...prev, { ...margin, id: generateId() }]);
+  };
+
+  const deleteMargin = (id: string) => {
+    setMargins(prev => prev.filter(m => m.id !== id));
+  };
+
   const updateProjectType = (type: ProjectType) => {
     setProjectTypes(prev => prev.map(t => t.id === type.id ? type : t));
   };
@@ -122,6 +132,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       addClientType,
       deleteClientType,
       updateMargin,
+      addMargin,
+      deleteMargin,
       updateProjectType,
       addProjectType,
       deleteProjectType,
