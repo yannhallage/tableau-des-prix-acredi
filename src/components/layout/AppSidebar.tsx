@@ -58,6 +58,11 @@ export function AppSidebar() {
       url: '/settings/projects', 
       icon: FileText 
     },
+    { 
+      title: 'Gestion Utilisateurs', 
+      url: '/settings/users', 
+      icon: Users 
+    },
   ];
 
   return (

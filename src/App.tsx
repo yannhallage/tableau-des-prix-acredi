@@ -15,6 +15,7 @@ import DailyRatesPage from "./pages/settings/DailyRates";
 import ClientTypesPage from "./pages/settings/ClientTypes";
 import MarginsPage from "./pages/settings/Margins";
 import ProjectTypesPage from "./pages/settings/ProjectTypes";
+import UsersPage from "./pages/settings/Users";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -114,6 +115,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute adminOnly>
             <ProjectTypesPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/settings/users"
+        element={
+          <ProtectedRoute adminOnly>
+            <UsersPage />
           </ProtectedRoute>
         }
       />
