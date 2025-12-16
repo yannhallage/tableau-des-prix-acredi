@@ -7,33 +7,44 @@ import {
   Percent, 
   FileText,
   LogOut,
-  LayoutDashboard
+  LayoutDashboard,
+  BarChart3,
+  Key,
+  ShieldCheck
 } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useAuth } from '@/contexts/AuthContext';
-import { ROLE_LABELS } from '@/types';
+import { usePermissionsContext, PERMISSIONS } from '@/contexts/PermissionsContext';
 import { cn } from '@/lib/utils';
 
 export function AppSidebar() {
-  const { user, logout, hasPermission } = useAuth();
-
-  const isAdmin = hasPermission(['admin']);
+  const { user, logout } = useAuth();
+  const { hasPermission, hasAnyPermission, roleName, isLoading } = usePermissionsContext();
 
   const mainNavItems = [
     { 
       title: 'Tableau de bord', 
       url: '/dashboard', 
-      icon: LayoutDashboard 
+      icon: LayoutDashboard,
+      show: true
     },
     { 
       title: 'Calculateur', 
       url: '/calculator', 
-      icon: Calculator 
+      icon: Calculator,
+      show: hasPermission(PERMISSIONS.CREATE_SIMULATIONS)
     },
     { 
       title: 'Historique', 
       url: '/history', 
-      icon: History 
+      icon: History,
+      show: true
+    },
+    { 
+      title: 'Statistiques', 
+      url: '/analytics', 
+      icon: BarChart3,
+      show: hasPermission(PERMISSIONS.VIEW_ANALYTICS)
     },
   ];
 
@@ -41,24 +52,49 @@ export function AppSidebar() {
     { 
       title: 'Taux Journaliers (TJM)', 
       url: '/settings/rates', 
-      icon: Users 
+      icon: Users,
+      show: hasPermission(PERMISSIONS.EDIT_DAILY_RATES)
     },
     { 
       title: 'Types de Clients', 
       url: '/settings/clients', 
-      icon: Briefcase 
+      icon: Briefcase,
+      show: hasPermission(PERMISSIONS.EDIT_CLIENT_TYPES)
     },
     { 
       title: 'Marges', 
       url: '/settings/margins', 
-      icon: Percent 
+      icon: Percent,
+      show: hasPermission(PERMISSIONS.EDIT_MARGINS)
     },
     { 
       title: 'Types de Projets', 
       url: '/settings/projects', 
-      icon: FileText 
+      icon: FileText,
+      show: hasPermission(PERMISSIONS.EDIT_PROJECT_TYPES)
+    },
+    { 
+      title: 'Gestion Utilisateurs', 
+      url: '/settings/users', 
+      icon: Users,
+      show: hasPermission(PERMISSIONS.MANAGE_USERS)
+    },
+    { 
+      title: 'Administration', 
+      url: '/admin', 
+      icon: ShieldCheck,
+      show: hasPermission(PERMISSIONS.VIEW_USAGE_HISTORY)
     },
   ];
+
+  const hasAdminAccess = hasAnyPermission([
+    PERMISSIONS.EDIT_DAILY_RATES,
+    PERMISSIONS.EDIT_CLIENT_TYPES,
+    PERMISSIONS.EDIT_MARGINS,
+    PERMISSIONS.EDIT_PROJECT_TYPES,
+    PERMISSIONS.MANAGE_USERS,
+    PERMISSIONS.VIEW_USAGE_HISTORY,
+  ]);
 
   return (
     <aside className="fixed left-0 top-0 z-40 h-screen w-64 bg-sidebar border-r border-sidebar-border">
@@ -77,7 +113,7 @@ export function AppSidebar() {
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto px-4 py-4">
           <div className="space-y-1">
-            {mainNavItems.map((item) => (
+            {mainNavItems.filter(item => item.show).map((item) => (
               <NavLink
                 key={item.url}
                 to={item.url}
@@ -90,13 +126,13 @@ export function AppSidebar() {
             ))}
           </div>
 
-          {isAdmin && (
+          {hasAdminAccess && (
             <div className="mt-8">
               <p className="mb-3 px-3 text-xs font-medium uppercase tracking-wider text-sidebar-foreground/50">
                 Administration
               </p>
               <div className="space-y-1">
-                {adminNavItems.map((item) => (
+                {adminNavItems.filter(item => item.show).map((item) => (
                   <NavLink
                     key={item.url}
                     to={item.url}
@@ -125,7 +161,7 @@ export function AppSidebar() {
                 {user?.name}
               </p>
               <p className="text-xs text-sidebar-foreground/60">
-                {user?.role && ROLE_LABELS[user.role]}
+                {roleName || 'Chargement...'}
               </p>
             </div>
           </div>

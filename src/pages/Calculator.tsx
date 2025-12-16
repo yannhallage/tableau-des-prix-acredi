@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useAuth } from '@/contexts/AuthContext';
 import { useData } from '@/contexts/DataContext';
+import { useUsageTracking } from '@/hooks/useUsageTracking';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -13,33 +14,57 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Calculator, Save, RotateCcw, MessageSquareText } from 'lucide-react';
+import { Calculator, Save, RotateCcw, MessageSquareText, Clock, Calendar } from 'lucide-react';
+import { CalculationMode, HOURS_PER_DAY } from '@/types';
 
 export default function CalculatorPage() {
   const { user } = useAuth();
   const { dailyRates, clientTypes, margins, projectTypes, addSimulation } = useData();
+  const { trackAction } = useUsageTracking();
 
   const [clientName, setClientName] = useState('');
   const [selectedClientType, setSelectedClientType] = useState('');
   const [selectedProjectType, setSelectedProjectType] = useState('');
   const [selectedMargin, setSelectedMargin] = useState('');
-  const [roleDays, setRoleDays] = useState<Record<string, number>>({});
+  const [roleUnits, setRoleUnits] = useState<Record<string, number>>({});
+  const [calculationMode, setCalculationMode] = useState<CalculationMode>('daily');
 
   const activeRates = dailyRates.filter(r => r.isActive);
   const activeMargins = margins.filter(m => m.isActive);
 
-  const handleDaysChange = (roleId: string, days: number) => {
-    setRoleDays(prev => ({
+  const handleUnitsChange = (roleId: string, units: number) => {
+    setRoleUnits(prev => ({
       ...prev,
-      [roleId]: days,
+      [roleId]: units,
     }));
   };
 
+  const handleModeChange = (mode: CalculationMode) => {
+    // Convert existing values when switching modes
+    const newRoleUnits: Record<string, number> = {};
+    Object.entries(roleUnits).forEach(([roleId, value]) => {
+      if (value > 0) {
+        if (mode === 'hourly' && calculationMode === 'daily') {
+          // Converting from days to hours
+          newRoleUnits[roleId] = value * HOURS_PER_DAY;
+        } else if (mode === 'daily' && calculationMode === 'hourly') {
+          // Converting from hours to days
+          newRoleUnits[roleId] = value / HOURS_PER_DAY;
+        } else {
+          newRoleUnits[roleId] = value;
+        }
+      }
+    });
+    setRoleUnits(newRoleUnits);
+    setCalculationMode(mode);
+  };
+
   const calculations = useMemo(() => {
-    // Calculate internal cost
+    // Calculate internal cost based on mode
     const internalCost = activeRates.reduce((sum, rate) => {
-      const days = roleDays[rate.id] || 0;
-      return sum + (days * rate.rate);
+      const units = roleUnits[rate.id] || 0;
+      const rateValue = calculationMode === 'hourly' ? rate.hourlyRate : rate.rate;
+      return sum + (units * rateValue);
     }, 0);
 
     // Get client coefficient
@@ -52,14 +77,18 @@ export default function CalculatorPage() {
     const marginMultiplier = 1 + (marginValue / 100);
     const recommendedPrice = costAfterCoefficient * marginMultiplier;
 
+    // Calculate total days/hours
+    const totalUnits = Object.values(roleUnits).reduce((sum, v) => sum + (v || 0), 0);
+
     return {
       internalCost,
       coefficient,
       costAfterCoefficient,
       marginValue,
       recommendedPrice,
+      totalUnits,
     };
-  }, [activeRates, roleDays, selectedClientType, selectedMargin, clientTypes]);
+  }, [activeRates, roleUnits, selectedClientType, selectedMargin, clientTypes, calculationMode]);
 
   // Generate justification for the price
   const justification = useMemo(() => {
@@ -69,20 +98,24 @@ export default function CalculatorPage() {
     const projectType = projectTypes.find(p => p.id === selectedProjectType);
     
     const usedRoles = activeRates
-      .filter(rate => (roleDays[rate.id] || 0) > 0)
+      .filter(rate => (roleUnits[rate.id] || 0) > 0)
       .map(rate => ({
         name: rate.roleName,
-        days: roleDays[rate.id],
-        cost: roleDays[rate.id] * rate.rate,
+        units: roleUnits[rate.id],
+        cost: roleUnits[rate.id] * (calculationMode === 'hourly' ? rate.hourlyRate : rate.rate),
       }));
 
-    const totalDays = usedRoles.reduce((sum, r) => sum + r.days, 0);
+    const totalUnits = usedRoles.reduce((sum, r) => sum + r.units, 0);
+    const unitLabel = calculationMode === 'hourly' ? 'heure' : 'jour';
+    const unitLabelPlural = calculationMode === 'hourly' ? 'heures' : 'jours';
 
     const points: string[] = [];
 
     // Argument 1: Team composition
     if (usedRoles.length > 0) {
-      const teamList = usedRoles.map(r => `${r.name} (${r.days} jour${r.days > 1 ? 's' : ''})`).join(', ');
+      const teamList = usedRoles.map(r => 
+        `${r.name} (${r.units} ${r.units > 1 ? unitLabelPlural : unitLabel})`
+      ).join(', ');
       points.push(`Une équipe pluridisciplinaire de ${usedRoles.length} expert${usedRoles.length > 1 ? 's' : ''} sera mobilisée : ${teamList}.`);
     }
 
@@ -106,7 +139,8 @@ export default function CalculatorPage() {
     }
 
     // Argument 4: Total investment context
-    points.push(`L'investissement total de ${totalDays} jour${totalDays > 1 ? 's' : ''} de travail garantit une prestation complète, de la conception à la livraison finale.`);
+    const totalDays = calculationMode === 'hourly' ? totalUnits / HOURS_PER_DAY : totalUnits;
+    points.push(`L'investissement total de ${totalDays.toFixed(1)} jour${totalDays > 1 ? 's' : ''} de travail garantit une prestation complète, de la conception à la livraison finale.`);
 
     // Argument 5: Margin justification
     if (calculations.marginValue > 0) {
@@ -122,7 +156,7 @@ export default function CalculatorPage() {
     points.push("Ce tarif intègre notre expertise sectorielle, nos méthodologies éprouvées et notre engagement qualité qui font la réputation d'Acredi Group.");
 
     return points;
-  }, [calculations, selectedClientType, selectedProjectType, activeRates, roleDays, clientTypes, projectTypes]);
+  }, [calculations, selectedClientType, selectedProjectType, activeRates, roleUnits, clientTypes, projectTypes, calculationMode]);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('fr-FR', {
@@ -137,7 +171,7 @@ export default function CalculatorPage() {
     setSelectedClientType('');
     setSelectedProjectType('');
     setSelectedMargin('');
-    setRoleDays({});
+    setRoleUnits({});
   };
 
   const handleSave = () => {
@@ -158,21 +192,26 @@ export default function CalculatorPage() {
       return;
     }
     if (calculations.internalCost === 0) {
-      toast.error('Veuillez saisir au moins un jour de travail');
+      toast.error('Veuillez saisir au moins une unité de travail');
       return;
     }
 
     const clientType = clientTypes.find(c => c.id === selectedClientType)!;
     const projectType = projectTypes.find(p => p.id === selectedProjectType)!;
 
+    // Convert to days for storage
     const roleDaysData = activeRates
-      .filter(rate => (roleDays[rate.id] || 0) > 0)
-      .map(rate => ({
-        roleId: rate.id,
-        roleName: rate.roleName,
-        days: roleDays[rate.id],
-        rate: rate.rate,
-      }));
+      .filter(rate => (roleUnits[rate.id] || 0) > 0)
+      .map(rate => {
+        const units = roleUnits[rate.id];
+        const days = calculationMode === 'hourly' ? units / HOURS_PER_DAY : units;
+        return {
+          roleId: rate.id,
+          roleName: rate.roleName,
+          days: days,
+          rate: rate.rate,
+        };
+      });
 
     addSimulation({
       clientName,
@@ -185,6 +224,16 @@ export default function CalculatorPage() {
       recommendedPrice: calculations.recommendedPrice,
       createdBy: user!,
       createdAt: new Date(),
+    });
+
+    // Track the simulation creation
+    trackAction('Simulation créée', {
+      clientName,
+      clientType: clientType.name,
+      projectType: projectType.name,
+      recommendedPrice: calculations.recommendedPrice,
+      margin: parseFloat(selectedMargin),
+      calculationMode,
     });
 
     toast.success('Simulation enregistrée avec succès');
@@ -257,27 +306,64 @@ export default function CalculatorPage() {
             )}
           </div>
 
-          {/* Role Days */}
+          {/* Calculation Mode & Role Units */}
           <div className="card-elevated p-6">
-            <h2 className="text-lg font-semibold text-foreground mb-4">
-              Jours par Rôle
-            </h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-foreground">
+                Charge de Travail
+              </h2>
+              <div className="flex items-center gap-2 p-1 bg-muted rounded-lg">
+                <button
+                  onClick={() => handleModeChange('daily')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                    calculationMode === 'daily'
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <Calendar className="h-4 w-4" />
+                  Jours
+                </button>
+                <button
+                  onClick={() => handleModeChange('hourly')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                    calculationMode === 'hourly'
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <Clock className="h-4 w-4" />
+                  Heures
+                </button>
+              </div>
+            </div>
+            
+            <p className="text-sm text-muted-foreground mb-4">
+              {calculationMode === 'hourly' 
+                ? `Saisissez le nombre d'heures par rôle (base: ${HOURS_PER_DAY}h/jour)`
+                : 'Saisissez le nombre de jours par rôle'
+              }
+            </p>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {activeRates.map((rate) => (
                 <div key={rate.id} className="flex items-center gap-4">
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-foreground truncate">{rate.roleName}</p>
                     <p className="text-sm text-muted-foreground">
-                      {formatCurrency(rate.rate)}/jour
+                      {calculationMode === 'hourly' 
+                        ? `${formatCurrency(rate.hourlyRate)}/heure`
+                        : `${formatCurrency(rate.rate)}/jour`
+                      }
                     </p>
                   </div>
                   <Input
                     type="number"
                     min="0"
-                    step="0.5"
+                    step={calculationMode === 'hourly' ? '1' : '0.5'}
                     placeholder="0"
-                    value={roleDays[rate.id] || ''}
-                    onChange={(e) => handleDaysChange(rate.id, parseFloat(e.target.value) || 0)}
+                    value={roleUnits[rate.id] || ''}
+                    onChange={(e) => handleUnitsChange(rate.id, parseFloat(e.target.value) || 0)}
                     className="w-24 text-center"
                   />
                 </div>
@@ -319,6 +405,32 @@ export default function CalculatorPage() {
             </div>
 
             <div className="space-y-4">
+              <div className="flex justify-between items-center py-3 border-b border-border">
+                <span className="text-muted-foreground">Mode de calcul</span>
+                <span className="font-medium text-foreground flex items-center gap-1">
+                  {calculationMode === 'hourly' ? (
+                    <>
+                      <Clock className="h-4 w-4" />
+                      Par heure
+                    </>
+                  ) : (
+                    <>
+                      <Calendar className="h-4 w-4" />
+                      Par jour
+                    </>
+                  )}
+                </span>
+              </div>
+
+              <div className="flex justify-between items-center py-3 border-b border-border">
+                <span className="text-muted-foreground">
+                  Total {calculationMode === 'hourly' ? 'heures' : 'jours'}
+                </span>
+                <span className="font-medium text-foreground">
+                  {calculations.totalUnits.toFixed(calculationMode === 'hourly' ? 0 : 1)}
+                </span>
+              </div>
+
               <div className="flex justify-between items-center py-3 border-b border-border">
                 <span className="text-muted-foreground">Coût interne</span>
                 <span className="font-medium text-foreground">

@@ -5,29 +5,48 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { DataProvider } from "@/contexts/DataContext";
+import { PermissionsProvider, usePermissionsContext, PERMISSIONS } from "@/contexts/PermissionsContext";
 
 // Pages
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
+import AdminDashboard from "./pages/AdminDashboard";
 import CalculatorPage from "./pages/Calculator";
 import HistoryPage from "./pages/History";
+import AnalyticsPage from "./pages/Analytics";
 import DailyRatesPage from "./pages/settings/DailyRates";
 import ClientTypesPage from "./pages/settings/ClientTypes";
 import MarginsPage from "./pages/settings/Margins";
 import ProjectTypesPage from "./pages/settings/ProjectTypes";
+import UsersPage from "./pages/settings/Users";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
-// Protected Route Component
-function ProtectedRoute({ children, adminOnly = false }: { children: React.ReactNode; adminOnly?: boolean }) {
-  const { isAuthenticated, hasPermission } = useAuth();
+// Protected Route Component with permission-based access
+function ProtectedRoute({ 
+  children, 
+  requiredPermission 
+}: { 
+  children: React.ReactNode; 
+  requiredPermission?: string;
+}) {
+  const { isAuthenticated } = useAuth();
+  const { hasPermission, isLoading } = usePermissionsContext();
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
 
-  if (adminOnly && !hasPermission(['admin'])) {
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  if (requiredPermission && !hasPermission(requiredPermission)) {
     return <Navigate to="/dashboard" replace />;
   }
 
@@ -83,12 +102,20 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+      <Route
+        path="/analytics"
+        element={
+          <ProtectedRoute>
+            <AnalyticsPage />
+          </ProtectedRoute>
+        }
+      />
 
-      {/* Admin Only Routes */}
+      {/* Permission-Based Routes */}
       <Route
         path="/settings/rates"
         element={
-          <ProtectedRoute adminOnly>
+          <ProtectedRoute requiredPermission={PERMISSIONS.EDIT_DAILY_RATES}>
             <DailyRatesPage />
           </ProtectedRoute>
         }
@@ -96,7 +123,7 @@ function AppRoutes() {
       <Route
         path="/settings/clients"
         element={
-          <ProtectedRoute adminOnly>
+          <ProtectedRoute requiredPermission={PERMISSIONS.EDIT_CLIENT_TYPES}>
             <ClientTypesPage />
           </ProtectedRoute>
         }
@@ -104,7 +131,7 @@ function AppRoutes() {
       <Route
         path="/settings/margins"
         element={
-          <ProtectedRoute adminOnly>
+          <ProtectedRoute requiredPermission={PERMISSIONS.EDIT_MARGINS}>
             <MarginsPage />
           </ProtectedRoute>
         }
@@ -112,8 +139,24 @@ function AppRoutes() {
       <Route
         path="/settings/projects"
         element={
-          <ProtectedRoute adminOnly>
+          <ProtectedRoute requiredPermission={PERMISSIONS.EDIT_PROJECT_TYPES}>
             <ProjectTypesPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/settings/users"
+        element={
+          <ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_USERS}>
+            <UsersPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin"
+        element={
+          <ProtectedRoute requiredPermission={PERMISSIONS.VIEW_USAGE_HISTORY}>
+            <AdminDashboard />
           </ProtectedRoute>
         }
       />
@@ -131,13 +174,15 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <AuthProvider>
-        <DataProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
-            <AppRoutes />
-          </BrowserRouter>
-        </DataProvider>
+        <PermissionsProvider>
+          <DataProvider>
+            <Toaster />
+            <Sonner />
+            <BrowserRouter>
+              <AppRoutes />
+            </BrowserRouter>
+          </DataProvider>
+        </PermissionsProvider>
       </AuthProvider>
     </TooltipProvider>
   </QueryClientProvider>

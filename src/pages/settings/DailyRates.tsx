@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useData } from '@/contexts/DataContext';
+import { useUsageTracking } from '@/hooks/useUsageTracking';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -13,14 +14,20 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Plus, Pencil, Trash2, Users } from 'lucide-react';
-import { DailyRate } from '@/types';
+import { Plus, Pencil, Trash2, Users, Clock } from 'lucide-react';
+import { DailyRate, HOURS_PER_DAY } from '@/types';
 
 export default function DailyRatesPage() {
   const { dailyRates, updateDailyRate, addDailyRate, deleteDailyRate } = useData();
+  const { trackAction } = useUsageTracking();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingRate, setEditingRate] = useState<DailyRate | null>(null);
-  const [formData, setFormData] = useState({ roleName: '', rate: '', isActive: true });
+  const [formData, setFormData] = useState({ 
+    roleName: '', 
+    rate: '', 
+    hourlyRate: '',
+    isActive: true 
+  });
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('fr-FR', {
@@ -36,13 +43,32 @@ export default function DailyRatesPage() {
       setFormData({
         roleName: rate.roleName,
         rate: rate.rate.toString(),
+        hourlyRate: rate.hourlyRate.toString(),
         isActive: rate.isActive,
       });
     } else {
       setEditingRate(null);
-      setFormData({ roleName: '', rate: '', isActive: true });
+      setFormData({ roleName: '', rate: '', hourlyRate: '', isActive: true });
     }
     setIsDialogOpen(true);
+  };
+
+  const handleDailyRateChange = (value: string) => {
+    const dailyRate = parseFloat(value) || 0;
+    setFormData(prev => ({
+      ...prev,
+      rate: value,
+      hourlyRate: dailyRate > 0 ? Math.round(dailyRate / HOURS_PER_DAY).toString() : '',
+    }));
+  };
+
+  const handleHourlyRateChange = (value: string) => {
+    const hourlyRate = parseFloat(value) || 0;
+    setFormData(prev => ({
+      ...prev,
+      hourlyRate: value,
+      rate: hourlyRate > 0 ? (hourlyRate * HOURS_PER_DAY).toString() : '',
+    }));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -57,20 +83,27 @@ export default function DailyRatesPage() {
       return;
     }
 
+    const dailyRate = parseFloat(formData.rate);
+    const hourlyRate = parseFloat(formData.hourlyRate) || Math.round(dailyRate / HOURS_PER_DAY);
+
     if (editingRate) {
       updateDailyRate({
         ...editingRate,
         roleName: formData.roleName,
-        rate: parseFloat(formData.rate),
+        rate: dailyRate,
+        hourlyRate: hourlyRate,
         isActive: formData.isActive,
       });
+      trackAction('Modification TJM', { action: 'update', roleName: formData.roleName, rate: dailyRate, hourlyRate });
       toast.success('Taux journalier modifié');
     } else {
       addDailyRate({
         roleName: formData.roleName,
-        rate: parseFloat(formData.rate),
+        rate: dailyRate,
+        hourlyRate: hourlyRate,
         isActive: formData.isActive,
       });
+      trackAction('Modification TJM', { action: 'add', roleName: formData.roleName, rate: dailyRate, hourlyRate });
       toast.success('Taux journalier ajouté');
     }
 
@@ -80,6 +113,7 @@ export default function DailyRatesPage() {
   const handleDelete = (id: string, roleName: string) => {
     if (confirm(`Êtes-vous sûr de vouloir supprimer le rôle "${roleName}" ?`)) {
       deleteDailyRate(id);
+      trackAction('Modification TJM', { action: 'delete', roleName });
       toast.success('Taux journalier supprimé');
     }
   };
@@ -92,7 +126,7 @@ export default function DailyRatesPage() {
   return (
     <DashboardLayout
       title="Taux Journaliers (TJM)"
-      subtitle="Gérez les tarifs journaliers par rôle"
+      subtitle="Gérez les tarifs journaliers et horaires par rôle"
     >
       <div className="flex justify-end mb-6">
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -118,16 +152,31 @@ export default function DailyRatesPage() {
                   onChange={(e) => setFormData(prev => ({ ...prev, roleName: e.target.value }))}
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="rate">Taux journalier (FCFA)</Label>
-                <Input
-                  id="rate"
-                  type="number"
-                  placeholder="350000"
-                  value={formData.rate}
-                  onChange={(e) => setFormData(prev => ({ ...prev, rate: e.target.value }))}
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="rate">Taux journalier (FCFA)</Label>
+                  <Input
+                    id="rate"
+                    type="number"
+                    placeholder="350000"
+                    value={formData.rate}
+                    onChange={(e) => handleDailyRateChange(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="hourlyRate">Taux horaire (FCFA)</Label>
+                  <Input
+                    id="hourlyRate"
+                    type="number"
+                    placeholder="43750"
+                    value={formData.hourlyRate}
+                    onChange={(e) => handleHourlyRateChange(e.target.value)}
+                  />
+                </div>
               </div>
+              <p className="text-xs text-muted-foreground">
+                Base de calcul : {HOURS_PER_DAY} heures par jour
+              </p>
               <div className="flex items-center justify-between">
                 <Label htmlFor="isActive">Actif</Label>
                 <Switch
@@ -155,6 +204,7 @@ export default function DailyRatesPage() {
             <tr>
               <th className="px-6 py-4 text-left">Rôle</th>
               <th className="px-6 py-4 text-right">Taux Journalier</th>
+              <th className="px-6 py-4 text-right">Taux Horaire</th>
               <th className="px-6 py-4 text-center">Statut</th>
               <th className="px-6 py-4 text-right">Actions</th>
             </tr>
@@ -176,6 +226,12 @@ export default function DailyRatesPage() {
                 </td>
                 <td className="px-6 py-4 text-right font-medium text-foreground">
                   {formatCurrency(rate.rate)}
+                </td>
+                <td className="px-6 py-4 text-right">
+                  <div className="flex items-center justify-end gap-1 text-muted-foreground">
+                    <Clock className="h-3 w-3" />
+                    <span>{formatCurrency(rate.hourlyRate)}</span>
+                  </div>
                 </td>
                 <td className="px-6 py-4 text-center">
                   <Switch

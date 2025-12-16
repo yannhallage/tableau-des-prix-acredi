@@ -10,8 +10,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Search, History, Calendar, Filter } from 'lucide-react';
+import { Search, History, Filter } from 'lucide-react';
 import { Simulation } from '@/types';
+import { PeriodFilter, PeriodType, DateRange, filterByPeriod } from '@/components/filters/PeriodFilter';
 
 export default function HistoryPage() {
   const { user, hasPermission } = useAuth();
@@ -19,7 +20,8 @@ export default function HistoryPage() {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [clientTypeFilter, setClientTypeFilter] = useState('all');
-  const [dateFilter, setDateFilter] = useState('all');
+  const [periodFilter, setPeriodFilter] = useState<PeriodType>('all');
+  const [customRange, setCustomRange] = useState<DateRange>({ start: null, end: null });
 
   const isAdmin = hasPermission(['admin']);
 
@@ -61,29 +63,16 @@ export default function HistoryPage() {
       filtered = filtered.filter(s => s.clientType.id === clientTypeFilter);
     }
 
-    // Date filter
-    if (dateFilter !== 'all') {
-      const now = new Date();
-      const filterDate = new Date();
-      
-      switch (dateFilter) {
-        case 'today':
-          filterDate.setHours(0, 0, 0, 0);
-          filtered = filtered.filter(s => new Date(s.createdAt) >= filterDate);
-          break;
-        case 'week':
-          filterDate.setDate(now.getDate() - 7);
-          filtered = filtered.filter(s => new Date(s.createdAt) >= filterDate);
-          break;
-        case 'month':
-          filterDate.setMonth(now.getMonth() - 1);
-          filtered = filtered.filter(s => new Date(s.createdAt) >= filterDate);
-          break;
-      }
-    }
+    // Period filter
+    filtered = filterByPeriod(
+      filtered,
+      (s) => new Date(s.createdAt),
+      periodFilter,
+      customRange
+    );
 
     return filtered;
-  }, [simulations, searchQuery, clientTypeFilter, dateFilter, isAdmin, user]);
+  }, [simulations, searchQuery, clientTypeFilter, periodFilter, customRange, isAdmin, user]);
 
   return (
     <DashboardLayout
@@ -102,7 +91,7 @@ export default function HistoryPage() {
               className="pl-10"
             />
           </div>
-          <div className="flex gap-3">
+          <div className="flex gap-3 flex-wrap">
             <Select value={clientTypeFilter} onValueChange={setClientTypeFilter}>
               <SelectTrigger className="w-48">
                 <Filter className="h-4 w-4 mr-2" />
@@ -117,18 +106,14 @@ export default function HistoryPage() {
                 ))}
               </SelectContent>
             </Select>
-            <Select value={dateFilter} onValueChange={setDateFilter}>
-              <SelectTrigger className="w-40">
-                <Calendar className="h-4 w-4 mr-2" />
-                <SelectValue placeholder="Période" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Toutes</SelectItem>
-                <SelectItem value="today">Aujourd'hui</SelectItem>
-                <SelectItem value="week">Cette semaine</SelectItem>
-                <SelectItem value="month">Ce mois</SelectItem>
-              </SelectContent>
-            </Select>
+            <PeriodFilter
+              value={periodFilter}
+              onChange={setPeriodFilter}
+              customRange={customRange}
+              onCustomRangeChange={setCustomRange}
+              onApplyCustomRange={() => {}}
+              showMonthOptions
+            />
           </div>
         </div>
       </div>
@@ -143,7 +128,7 @@ export default function HistoryPage() {
             Aucune simulation trouvée
           </h3>
           <p className="text-muted-foreground">
-            {searchQuery || clientTypeFilter !== 'all' || dateFilter !== 'all'
+            {searchQuery || clientTypeFilter !== 'all' || periodFilter !== 'all'
               ? 'Essayez de modifier vos filtres'
               : 'Créez votre première simulation pour la voir ici'}
           </p>
