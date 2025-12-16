@@ -2,14 +2,6 @@ import { useState, useMemo } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useData } from '@/contexts/DataContext';
 import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import {
   BarChart,
   Bar,
@@ -25,15 +17,17 @@ import {
   Line,
   Legend,
 } from 'recharts';
-import { BarChart3, PieChart as PieChartIcon, TrendingUp, Calendar } from 'lucide-react';
-import { format, startOfMonth, endOfMonth, subMonths, isWithinInterval } from 'date-fns';
+import { BarChart3, PieChart as PieChartIcon, TrendingUp } from 'lucide-react';
+import { format, subMonths, subDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { PeriodFilter, PeriodType, DateRange, filterByPeriod } from '@/components/filters/PeriodFilter';
 
 const COLORS = ['hsl(var(--primary))', 'hsl(var(--accent))', 'hsl(var(--info))', 'hsl(var(--success))', 'hsl(var(--warning))', '#8884d8', '#82ca9d', '#ffc658'];
 
 export default function AnalyticsPage() {
   const { simulations, clientTypes } = useData();
-  const [periodFilter, setPeriodFilter] = useState('6');
+  const [periodFilter, setPeriodFilter] = useState<PeriodType>('6months');
+  const [customRange, setCustomRange] = useState<DateRange>({ start: null, end: null });
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('fr-FR', {
@@ -53,16 +47,35 @@ export default function AnalyticsPage() {
     return value.toString();
   };
 
+  // Get number of months for chart data
+  const getMonthsCount = (): number => {
+    switch (periodFilter) {
+      case 'today': return 1;
+      case 'week': return 1;
+      case 'month': return 1;
+      case '3months': return 3;
+      case '6months': return 6;
+      case '12months': return 12;
+      case 'custom':
+        if (customRange.start && customRange.end) {
+          const diffTime = Math.abs(customRange.end.getTime() - customRange.start.getTime());
+          const diffMonths = Math.ceil(diffTime / (1000 * 60 * 60 * 24 * 30));
+          return Math.max(1, Math.min(diffMonths, 12));
+        }
+        return 6;
+      default: return 6;
+    }
+  };
+
   // Filter simulations by period
   const filteredSimulations = useMemo(() => {
-    const months = parseInt(periodFilter);
-    const startDate = subMonths(new Date(), months);
-    
-    return simulations.filter(sim => {
-      const simDate = new Date(sim.createdAt);
-      return simDate >= startDate;
-    });
-  }, [simulations, periodFilter]);
+    return filterByPeriod(
+      simulations,
+      (sim) => new Date(sim.createdAt),
+      periodFilter,
+      customRange
+    );
+  }, [simulations, periodFilter, customRange]);
 
   // Data by client type
   const dataByClientType = useMemo(() => {
@@ -85,7 +98,7 @@ export default function AnalyticsPage() {
 
   // Data by month
   const dataByMonth = useMemo(() => {
-    const months = parseInt(periodFilter);
+    const months = getMonthsCount();
     const monthsData: Record<string, { month: string; simulations: number; revenue: number }> = {};
     
     // Initialize all months
@@ -130,19 +143,15 @@ export default function AnalyticsPage() {
       {/* Period Filter */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-2">
-          <Calendar className="h-5 w-5 text-muted-foreground" />
           <span className="text-sm text-muted-foreground">Période :</span>
-          <Select value={periodFilter} onValueChange={setPeriodFilter}>
-            <SelectTrigger className="w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="1">1 mois</SelectItem>
-              <SelectItem value="3">3 mois</SelectItem>
-              <SelectItem value="6">6 mois</SelectItem>
-              <SelectItem value="12">12 mois</SelectItem>
-            </SelectContent>
-          </Select>
+          <PeriodFilter
+            value={periodFilter}
+            onChange={setPeriodFilter}
+            customRange={customRange}
+            onCustomRangeChange={setCustomRange}
+            onApplyCustomRange={() => {}}
+            showMonthOptions
+          />
         </div>
       </div>
 
