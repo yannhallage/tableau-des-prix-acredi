@@ -46,13 +46,20 @@ export default function UsersPage() {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [usageHistory, setUsageHistory] = useState<UsageHistoryEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isRoleDialogOpen, setIsRoleDialogOpen] = useState(false);
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
   const [newRole, setNewRole] = useState<AppRole>('sales');
+  const [isCreating, setIsCreating] = useState(false);
+  
+  // New user form state
+  const [newUserEmail, setNewUserEmail] = useState('');
+  const [newUserPassword, setNewUserPassword] = useState('');
+  const [newUserName, setNewUserName] = useState('');
+  const [newUserRole, setNewUserRole] = useState<AppRole>('sales');
 
   const fetchUsers = async () => {
     try {
-      // Fetch all profiles
       const { data: profiles, error: profilesError } = await supabase
         .from('profiles')
         .select('*')
@@ -60,14 +67,12 @@ export default function UsersPage() {
 
       if (profilesError) throw profilesError;
 
-      // Fetch all roles
       const { data: roles, error: rolesError } = await supabase
         .from('user_roles')
         .select('user_id, role');
 
       if (rolesError) throw rolesError;
 
-      // Combine profiles with roles
       const usersWithRoles = profiles?.map(profile => ({
         ...profile,
         role: roles?.find(r => r.user_id === profile.user_id)?.role as AppRole || 'sales',
@@ -90,7 +95,6 @@ export default function UsersPage() {
 
       if (error) throw error;
 
-      // Fetch profiles to get user names
       const { data: profiles } = await supabase
         .from('profiles')
         .select('user_id, name, email');
@@ -127,14 +131,13 @@ export default function UsersPage() {
   const openRoleDialog = (user: UserProfile) => {
     setSelectedUser(user);
     setNewRole(user.role || 'sales');
-    setIsDialogOpen(true);
+    setIsRoleDialogOpen(true);
   };
 
   const handleRoleChange = async () => {
     if (!selectedUser) return;
 
     try {
-      // Update the role
       const { error } = await supabase
         .from('user_roles')
         .update({ role: newRole })
@@ -143,12 +146,58 @@ export default function UsersPage() {
       if (error) throw error;
 
       toast.success('Rôle mis à jour avec succès');
-      setIsDialogOpen(false);
+      setIsRoleDialogOpen(false);
       fetchUsers();
     } catch (error) {
       console.error('Error updating role:', error);
       toast.error('Erreur lors de la mise à jour du rôle');
     }
+  };
+
+  const handleCreateUser = async () => {
+    if (!newUserEmail || !newUserPassword || !newUserName) {
+      toast.error('Veuillez remplir tous les champs');
+      return;
+    }
+
+    if (newUserPassword.length < 6) {
+      toast.error('Le mot de passe doit contenir au moins 6 caractères');
+      return;
+    }
+
+    setIsCreating(true);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('create-user', {
+        body: {
+          email: newUserEmail,
+          password: newUserPassword,
+          name: newUserName,
+          role: newUserRole,
+        },
+      });
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      toast.success('Utilisateur créé avec succès');
+      setIsCreateDialogOpen(false);
+      resetCreateForm();
+      fetchUsers();
+      fetchUsageHistory();
+    } catch (error: any) {
+      console.error('Error creating user:', error);
+      toast.error(error.message || 'Erreur lors de la création de l\'utilisateur');
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const resetCreateForm = () => {
+    setNewUserEmail('');
+    setNewUserPassword('');
+    setNewUserName('');
+    setNewUserRole('sales');
   };
 
   const getRoleBadgeVariant = (role: AppRole) => {
@@ -162,6 +211,19 @@ export default function UsersPage() {
       default:
         return 'outline';
     }
+  };
+
+  const getActionLabel = (action: string) => {
+    const labels: Record<string, string> = {
+      'Connexion': 'Connexion',
+      'Simulation créée': 'Simulation créée',
+      'Création utilisateur': 'Création utilisateur',
+      'Modification TJM': 'Modification TJM',
+      'Modification marge': 'Modification marge',
+      'Modification type client': 'Modification type client',
+      'Modification type projet': 'Modification type projet',
+    };
+    return labels[action] || action;
   };
 
   if (isLoading) {
@@ -191,14 +253,20 @@ export default function UsersPage() {
 
           <TabsContent value="users">
             <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Shield className="h-5 w-5" />
-                  Liste des Utilisateurs
-                </CardTitle>
-                <CardDescription>
-                  {users.length} utilisateur{users.length > 1 ? 's' : ''} enregistré{users.length > 1 ? 's' : ''}
-                </CardDescription>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Shield className="h-5 w-5" />
+                    Liste des Utilisateurs
+                  </CardTitle>
+                  <CardDescription>
+                    {users.length} utilisateur{users.length > 1 ? 's' : ''} enregistré{users.length > 1 ? 's' : ''}
+                  </CardDescription>
+                </div>
+                <Button onClick={() => setIsCreateDialogOpen(true)} className="flex items-center gap-2">
+                  <UserPlus className="h-4 w-4" />
+                  Nouvel utilisateur
+                </Button>
               </CardHeader>
               <CardContent>
                 {users.length === 0 ? (
@@ -286,7 +354,7 @@ export default function UsersPage() {
                             </div>
                           </TableCell>
                           <TableCell>
-                            <Badge variant="outline">{entry.action}</Badge>
+                            <Badge variant="outline">{getActionLabel(entry.action)}</Badge>
                           </TableCell>
                           <TableCell className="max-w-xs truncate">
                             {entry.details ? JSON.stringify(entry.details) : '-'}
@@ -303,7 +371,7 @@ export default function UsersPage() {
       </div>
 
       {/* Role Edit Dialog */}
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      <Dialog open={isRoleDialogOpen} onOpenChange={setIsRoleDialogOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Modifier le rôle</DialogTitle>
@@ -327,11 +395,89 @@ export default function UsersPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+            <Button variant="outline" onClick={() => setIsRoleDialogOpen(false)}>
               Annuler
             </Button>
             <Button onClick={handleRoleChange}>
               Enregistrer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create User Dialog */}
+      <Dialog open={isCreateDialogOpen} onOpenChange={(open) => {
+        setIsCreateDialogOpen(open);
+        if (!open) resetCreateForm();
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserPlus className="h-5 w-5" />
+              Créer un utilisateur
+            </DialogTitle>
+            <DialogDescription>
+              Créez un nouveau compte utilisateur avec un rôle spécifique
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Nom complet</Label>
+              <Input
+                id="name"
+                placeholder="Jean Dupont"
+                value={newUserName}
+                onChange={(e) => setNewUserName(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="jean@acredi.ci"
+                value={newUserEmail}
+                onChange={(e) => setNewUserEmail(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="password">Mot de passe</Label>
+              <Input
+                id="password"
+                type="password"
+                placeholder="••••••••"
+                value={newUserPassword}
+                onChange={(e) => setNewUserPassword(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">Minimum 6 caractères</p>
+            </div>
+            <div className="space-y-2">
+              <Label>Rôle</Label>
+              <Select value={newUserRole} onValueChange={(value) => setNewUserRole(value as AppRole)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="admin">Administrateur</SelectItem>
+                  <SelectItem value="project_manager">Chef de projet</SelectItem>
+                  <SelectItem value="sales">Commercial</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+              Annuler
+            </Button>
+            <Button onClick={handleCreateUser} disabled={isCreating}>
+              {isCreating ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Création...
+                </>
+              ) : (
+                'Créer l\'utilisateur'
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useData } from '@/contexts/DataContext';
+import { useUsageTracking } from '@/hooks/useUsageTracking';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -18,6 +19,7 @@ import { DailyRate } from '@/types';
 
 export default function DailyRatesPage() {
   const { dailyRates, updateDailyRate, addDailyRate, deleteDailyRate } = useData();
+  const { trackAction } = useUsageTracking();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingRate, setEditingRate] = useState<DailyRate | null>(null);
   const [formData, setFormData] = useState({ roleName: '', rate: '', isActive: true });
@@ -64,6 +66,7 @@ export default function DailyRatesPage() {
         rate: parseFloat(formData.rate),
         isActive: formData.isActive,
       });
+      trackAction('Modification TJM', { action: 'update', roleName: formData.roleName, rate: parseFloat(formData.rate) });
       toast.success('Taux journalier modifié');
     } else {
       addDailyRate({
@@ -71,6 +74,7 @@ export default function DailyRatesPage() {
         rate: parseFloat(formData.rate),
         isActive: formData.isActive,
       });
+      trackAction('Modification TJM', { action: 'add', roleName: formData.roleName, rate: parseFloat(formData.rate) });
       toast.success('Taux journalier ajouté');
     }
 
@@ -80,6 +84,7 @@ export default function DailyRatesPage() {
   const handleDelete = (id: string, roleName: string) => {
     if (confirm(`Êtes-vous sûr de vouloir supprimer le rôle "${roleName}" ?`)) {
       deleteDailyRate(id);
+      trackAction('Modification TJM', { action: 'delete', roleName });
       toast.success('Taux journalier supprimé');
     }
   };
