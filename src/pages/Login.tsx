@@ -1,17 +1,19 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { Lock, Mail, ArrowRight } from 'lucide-react';
+import { Lock, Mail, ArrowRight, User } from 'lucide-react';
 
 export default function Login() {
+  const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { login } = useAuth();
+  const { login, signup } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -19,15 +21,25 @@ export default function Login() {
     setIsLoading(true);
 
     try {
-      const success = await login(email, password);
-      if (success) {
-        toast.success('Connexion réussie');
-        navigate('/dashboard');
+      if (isSignUp) {
+        const success = await signup(email, password, name);
+        if (success) {
+          toast.success('Compte créé avec succès');
+          navigate('/dashboard');
+        } else {
+          toast.error('Erreur lors de la création du compte');
+        }
       } else {
-        toast.error('Email ou mot de passe incorrect');
+        const success = await login(email, password);
+        if (success) {
+          toast.success('Connexion réussie');
+          navigate('/dashboard');
+        } else {
+          toast.error('Email ou mot de passe incorrect');
+        }
       }
     } catch (error) {
-      toast.error('Erreur de connexion');
+      toast.error('Une erreur est survenue');
     } finally {
       setIsLoading(false);
     }
@@ -78,13 +90,35 @@ export default function Login() {
                 <span className="text-xl font-bold text-primary-foreground">A</span>
               </div>
             </div>
-            <h2 className="text-2xl font-semibold text-foreground">Bienvenue</h2>
+            <h2 className="text-2xl font-semibold text-foreground">
+              {isSignUp ? 'Créer un compte' : 'Bienvenue'}
+            </h2>
             <p className="mt-2 text-muted-foreground">
-              Connectez-vous à votre compte
+              {isSignUp ? 'Remplissez les informations ci-dessous' : 'Connectez-vous à votre compte'}
             </p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
+            {isSignUp && (
+              <div className="space-y-2">
+                <Label htmlFor="name" className="text-foreground">
+                  Nom complet
+                </Label>
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                  <Input
+                    id="name"
+                    type="text"
+                    placeholder="Votre nom"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="pl-10 h-12"
+                    required
+                  />
+                </div>
+              </div>
+            )}
+
             <div className="space-y-2">
               <Label htmlFor="email" className="text-foreground">
                 Adresse email
@@ -117,6 +151,7 @@ export default function Login() {
                   onChange={(e) => setPassword(e.target.value)}
                   className="pl-10 h-12"
                   required
+                  minLength={6}
                 />
               </div>
             </div>
@@ -129,25 +164,25 @@ export default function Login() {
               {isLoading ? (
                 <span className="flex items-center gap-2">
                   <div className="h-4 w-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
-                  Connexion...
+                  {isSignUp ? 'Création...' : 'Connexion...'}
                 </span>
               ) : (
                 <span className="flex items-center gap-2">
-                  Se connecter
+                  {isSignUp ? 'Créer le compte' : 'Se connecter'}
                   <ArrowRight className="h-4 w-4" />
                 </span>
               )}
             </Button>
           </form>
 
-          <div className="rounded-lg border border-border bg-muted/30 p-4">
-            <p className="text-sm font-medium text-foreground mb-2">Comptes de démonstration:</p>
-            <ul className="text-xs text-muted-foreground space-y-1">
-              <li><strong>Admin:</strong> admin@acredi.ci</li>
-              <li><strong>Chef de projet:</strong> chef@acredi.ci</li>
-              <li><strong>Commercial:</strong> commercial@acredi.ci</li>
-              <li><strong>Mot de passe:</strong> demo123</li>
-            </ul>
+          <div className="text-center">
+            <button
+              type="button"
+              onClick={() => setIsSignUp(!isSignUp)}
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              {isSignUp ? 'Déjà un compte ? Se connecter' : 'Pas de compte ? Créer un compte'}
+            </button>
           </div>
         </div>
       </div>
