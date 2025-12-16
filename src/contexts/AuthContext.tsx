@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { trackUsage } from '@/hooks/useUsageTracking';
 
 type AppRole = 'admin' | 'project_manager' | 'sales';
 
@@ -106,6 +107,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (error) {
         console.error('Login error:', error.message);
         return false;
+      }
+
+      // Track login
+      if (data.session) {
+        setTimeout(() => {
+          trackUsage('Connexion', { email });
+        }, 100);
       }
 
       return !!data.session;

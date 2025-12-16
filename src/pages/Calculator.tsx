@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useAuth } from '@/contexts/AuthContext';
 import { useData } from '@/contexts/DataContext';
+import { useUsageTracking } from '@/hooks/useUsageTracking';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -18,6 +19,7 @@ import { Calculator, Save, RotateCcw, MessageSquareText } from 'lucide-react';
 export default function CalculatorPage() {
   const { user } = useAuth();
   const { dailyRates, clientTypes, margins, projectTypes, addSimulation } = useData();
+  const { trackAction } = useUsageTracking();
 
   const [clientName, setClientName] = useState('');
   const [selectedClientType, setSelectedClientType] = useState('');
@@ -185,6 +187,15 @@ export default function CalculatorPage() {
       recommendedPrice: calculations.recommendedPrice,
       createdBy: user!,
       createdAt: new Date(),
+    });
+
+    // Track the simulation creation
+    trackAction('Simulation créée', {
+      clientName,
+      clientType: clientType.name,
+      projectType: projectType.name,
+      recommendedPrice: calculations.recommendedPrice,
+      margin: parseFloat(selectedMargin),
     });
 
     toast.success('Simulation enregistrée avec succès');

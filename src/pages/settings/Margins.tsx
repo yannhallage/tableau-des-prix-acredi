@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useData } from '@/contexts/DataContext';
+import { useUsageTracking } from '@/hooks/useUsageTracking';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -28,6 +29,7 @@ import { Margin } from '@/types';
 
 export default function MarginsPage() {
   const { margins, updateMargin, addMargin, deleteMargin } = useData();
+  const { trackAction } = useUsageTracking();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [editingMargin, setEditingMargin] = useState<Margin | null>(null);
@@ -38,6 +40,7 @@ export default function MarginsPage() {
     const margin = margins.find(m => m.id === marginId);
     if (margin) {
       updateMargin({ ...margin, isActive: !currentState });
+      trackAction('Modification marge', { action: 'toggle', percentage: margin.percentage, newState: !currentState });
       toast.success(currentState ? 'Marge désactivée' : 'Marge activée');
     }
   };
