@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { DataProvider } from "@/contexts/DataContext";
 import { PermissionsProvider, usePermissionsContext, PERMISSIONS } from "@/contexts/PermissionsContext";
+import { SidebarProvider } from "@/contexts/SidebarContext";
 
 // Pages
 import Login from "./pages/Login";
@@ -176,11 +177,13 @@ const App = () => (
       <AuthProvider>
         <PermissionsProvider>
           <DataProvider>
-            <Toaster />
-            <Sonner />
-            <BrowserRouter>
-              <AppRoutes />
-            </BrowserRouter>
+            <SidebarProvider>
+              <Toaster />
+              <Sonner />
+              <BrowserRouter>
+                <AppRoutes />
+              </BrowserRouter>
+            </SidebarProvider>
           </DataProvider>
         </PermissionsProvider>
       </AuthProvider>
