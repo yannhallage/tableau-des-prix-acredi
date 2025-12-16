@@ -9,7 +9,8 @@ import {
   LogOut,
   LayoutDashboard,
   BarChart3,
-  Key
+  Key,
+  ShieldCheck
 } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useAuth } from '@/contexts/AuthContext';
@@ -78,6 +79,12 @@ export function AppSidebar() {
       icon: Users,
       show: hasPermission(PERMISSIONS.MANAGE_USERS)
     },
+    { 
+      title: 'Administration', 
+      url: '/admin', 
+      icon: ShieldCheck,
+      show: hasPermission(PERMISSIONS.VIEW_USAGE_HISTORY)
+    },
   ];
 
   const hasAdminAccess = hasAnyPermission([
@@ -86,6 +93,7 @@ export function AppSidebar() {
     PERMISSIONS.EDIT_MARGINS,
     PERMISSIONS.EDIT_PROJECT_TYPES,
     PERMISSIONS.MANAGE_USERS,
+    PERMISSIONS.VIEW_USAGE_HISTORY,
   ]);
 
   return (

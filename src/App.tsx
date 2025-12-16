@@ -10,6 +10,7 @@ import { PermissionsProvider, usePermissionsContext, PERMISSIONS } from "@/conte
 // Pages
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
+import AdminDashboard from "./pages/AdminDashboard";
 import CalculatorPage from "./pages/Calculator";
 import HistoryPage from "./pages/History";
 import AnalyticsPage from "./pages/Analytics";
@@ -148,6 +149,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute requiredPermission={PERMISSIONS.MANAGE_USERS}>
             <UsersPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin"
+        element={
+          <ProtectedRoute requiredPermission={PERMISSIONS.VIEW_USAGE_HISTORY}>
+            <AdminDashboard />
           </ProtectedRoute>
         }
       />
