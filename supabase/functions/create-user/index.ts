@@ -48,14 +48,35 @@ serve(async (req) => {
       auth: { persistSession: false }
     });
 
+    // Get user's custom role and check permissions
     const { data: roleData, error: roleError } = await adminClient
       .from('user_roles')
-      .select('role')
+      .select('role, custom_role_id')
       .eq('user_id', currentUser.id)
       .single();
 
-    if (roleError || roleData?.role !== 'admin') {
-      console.error('Not admin:', roleError, roleData);
+    let hasManageUsersPermission = false;
+
+    // Check legacy admin role
+    if (roleData?.role === 'admin') {
+      hasManageUsersPermission = true;
+    }
+
+    // Check custom role permissions
+    if (roleData?.custom_role_id) {
+      const { data: customRole } = await adminClient
+        .from('custom_roles')
+        .select('permissions')
+        .eq('id', roleData.custom_role_id)
+        .single();
+
+      if (customRole?.permissions?.can_manage_users) {
+        hasManageUsersPermission = true;
+      }
+    }
+
+    if (!hasManageUsersPermission) {
+      console.error('No manage users permission:', roleData);
       return new Response(
         JSON.stringify({ error: 'Accès réservé aux administrateurs' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -63,16 +84,16 @@ serve(async (req) => {
     }
 
     // Parse request body
-    const { email, password, name, role } = await req.json();
+    const { email, password, name, customRoleId } = await req.json();
 
-    if (!email || !password || !name || !role) {
+    if (!email || !password || !name) {
       return new Response(
         JSON.stringify({ error: 'Tous les champs sont requis' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log('Creating user:', email, name, role);
+    console.log('Creating user:', email, name, customRoleId);
 
     // Create the user using admin API
     const { data: newUser, error: createError } = await adminClient.auth.admin.createUser({
@@ -92,14 +113,17 @@ serve(async (req) => {
 
     console.log('User created:', newUser.user?.id);
 
-    // The trigger should create profile and default role, but we need to update the role
-    if (role !== 'sales' && newUser.user) {
+    // The trigger creates profile and default role, update with custom role if provided
+    if (newUser.user && customRoleId) {
       // Wait a bit for the trigger to complete
       await new Promise(resolve => setTimeout(resolve, 500));
       
       const { error: updateRoleError } = await adminClient
         .from('user_roles')
-        .update({ role, assigned_by: currentUser.id })
+        .update({ 
+          custom_role_id: customRoleId, 
+          assigned_by: currentUser.id 
+        })
         .eq('user_id', newUser.user.id);
 
       if (updateRoleError) {
@@ -107,11 +131,22 @@ serve(async (req) => {
       }
     }
 
+    // Get role name for logging
+    let roleName = 'Non assigné';
+    if (customRoleId) {
+      const { data: roleInfo } = await adminClient
+        .from('custom_roles')
+        .select('name')
+        .eq('id', customRoleId)
+        .single();
+      roleName = roleInfo?.name || roleName;
+    }
+
     // Log this action
     await adminClient.from('usage_history').insert({
       user_id: currentUser.id,
       action: 'Création utilisateur',
-      details: { created_user_email: email, assigned_role: role }
+      details: { created_user_email: email, assigned_role: roleName }
     });
 
     return new Response(
