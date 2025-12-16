@@ -58,6 +58,11 @@ export default function UsersPage() {
   const [newUserName, setNewUserName] = useState('');
   const [newUserRole, setNewUserRole] = useState<AppRole>('sales');
 
+  // Usage history filters
+  const [filterUser, setFilterUser] = useState<string>('all');
+  const [filterAction, setFilterAction] = useState<string>('all');
+  const [filterPeriod, setFilterPeriod] = useState<string>('all');
+
   const fetchUsers = async () => {
     try {
       const { data: profiles, error: profilesError } = await supabase
@@ -226,6 +231,37 @@ export default function UsersPage() {
     return labels[action] || action;
   };
 
+  // Get unique actions for filter
+  const uniqueActions = Array.from(new Set(usageHistory.map(h => h.action)));
+
+  // Filter usage history
+  const filteredHistory = usageHistory.filter(entry => {
+    // Filter by user
+    if (filterUser !== 'all' && entry.user_id !== filterUser) return false;
+    
+    // Filter by action
+    if (filterAction !== 'all' && entry.action !== filterAction) return false;
+    
+    // Filter by period
+    if (filterPeriod !== 'all') {
+      const entryDate = new Date(entry.created_at);
+      const now = new Date();
+      
+      if (filterPeriod === 'today') {
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        if (entryDate < today) return false;
+      } else if (filterPeriod === 'week') {
+        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        if (entryDate < weekAgo) return false;
+      } else if (filterPeriod === 'month') {
+        const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        if (entryDate < monthAgo) return false;
+      }
+    }
+    
+    return true;
+  });
+
   if (isLoading) {
     return (
       <DashboardLayout title="Gestion des Utilisateurs">
@@ -326,10 +362,64 @@ export default function UsersPage() {
                   Dernières actions effectuées par les utilisateurs
                 </CardDescription>
               </CardHeader>
-              <CardContent>
-                {usageHistory.length === 0 ? (
+              <CardContent className="space-y-4">
+                {/* Filters */}
+                <div className="flex flex-wrap gap-4 p-4 bg-muted/50 rounded-lg">
+                  <div className="flex-1 min-w-[200px]">
+                    <Label className="text-xs text-muted-foreground mb-1 block">Utilisateur</Label>
+                    <Select value={filterUser} onValueChange={setFilterUser}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Tous les utilisateurs" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Tous les utilisateurs</SelectItem>
+                        {users.map(user => (
+                          <SelectItem key={user.user_id} value={user.user_id}>
+                            {user.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex-1 min-w-[200px]">
+                    <Label className="text-xs text-muted-foreground mb-1 block">Type d'action</Label>
+                    <Select value={filterAction} onValueChange={setFilterAction}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Toutes les actions" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Toutes les actions</SelectItem>
+                        {uniqueActions.map(action => (
+                          <SelectItem key={action} value={action}>
+                            {getActionLabel(action)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex-1 min-w-[200px]">
+                    <Label className="text-xs text-muted-foreground mb-1 block">Période</Label>
+                    <Select value={filterPeriod} onValueChange={setFilterPeriod}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Toutes les périodes" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Toutes les périodes</SelectItem>
+                        <SelectItem value="today">Aujourd'hui</SelectItem>
+                        <SelectItem value="week">Cette semaine</SelectItem>
+                        <SelectItem value="month">Ce mois</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="text-sm text-muted-foreground">
+                  {filteredHistory.length} résultat{filteredHistory.length > 1 ? 's' : ''}
+                </div>
+
+                {filteredHistory.length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground">
-                    Aucune activité enregistrée
+                    Aucune activité trouvée
                   </div>
                 ) : (
                   <Table>
@@ -342,7 +432,7 @@ export default function UsersPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {usageHistory.map((entry) => (
+                      {filteredHistory.map((entry) => (
                         <TableRow key={entry.id}>
                           <TableCell>
                             {format(new Date(entry.created_at), 'dd MMM yyyy HH:mm', { locale: fr })}
