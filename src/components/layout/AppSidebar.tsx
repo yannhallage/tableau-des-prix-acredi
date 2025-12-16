@@ -140,25 +140,15 @@ export function AppSidebar() {
         )}
       >
         <div className="flex h-full flex-col">
-          {/* Logo avec bouton de fermeture sur mobile */}
-          <div className="flex items-center justify-between gap-3 px-6 py-5 border-b border-sidebar-border">
-            <div className="flex items-center gap-3 flex-1">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sidebar-primary">
-                <span className="text-lg font-bold text-sidebar-primary-foreground">A</span>
-              </div>
-              <div>
-                <h1 className="text-lg font-semibold text-sidebar-foreground">Acredi</h1>
-                <p className="text-xs text-sidebar-foreground/60">Pricing Engine</p>
-              </div>
+          {/* Logo */}
+          <div className="flex items-center gap-3 px-6 py-5 border-b border-sidebar-border">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sidebar-primary">
+              <span className="text-lg font-bold text-sidebar-primary-foreground">A</span>
             </div>
-            {/* Bouton de fermeture sur mobile */}
-            <button
-              onClick={closeSidebar}
-              className="md:hidden rounded-lg p-2 hover:bg-sidebar-accent text-sidebar-foreground/70 hover:text-sidebar-accent-foreground transition-colors"
-              aria-label="Fermer le menu"
-            >
-              <X className="h-5 w-5" />
-            </button>
+            <div>
+              <h1 className="text-lg font-semibold text-sidebar-foreground">Acredi</h1>
+              <p className="text-xs text-sidebar-foreground/60">Pricing Engine</p>
+            </div>
           </div>
 
         {/* Navigation */}
