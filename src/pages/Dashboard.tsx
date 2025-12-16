@@ -1,19 +1,34 @@
+import { useState, useMemo } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useAuth } from '@/contexts/AuthContext';
 import { useData } from '@/contexts/DataContext';
 import { Calculator, History, TrendingUp, Users } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { ROLE_LABELS } from '@/types';
+import { PeriodFilter, PeriodType, DateRange, filterByPeriod } from '@/components/filters/PeriodFilter';
 
 export default function Dashboard() {
   const { user, hasPermission } = useAuth();
   const { simulations, dailyRates, clientTypes, projectTypes } = useData();
+  
+  const [periodFilter, setPeriodFilter] = useState<PeriodType>('month');
+  const [customRange, setCustomRange] = useState<DateRange>({ start: null, end: null });
 
   const isAdmin = hasPermission(['admin']);
 
-  // Calculate stats
-  const totalSimulations = simulations.length;
-  const totalRevenue = simulations.reduce((sum, s) => sum + s.recommendedPrice, 0);
+  // Filter simulations by period
+  const filteredSimulations = useMemo(() => {
+    return filterByPeriod(
+      simulations,
+      (s) => new Date(s.createdAt),
+      periodFilter,
+      customRange
+    );
+  }, [simulations, periodFilter, customRange]);
+
+  // Calculate stats based on filtered simulations
+  const totalSimulations = filteredSimulations.length;
+  const totalRevenue = filteredSimulations.reduce((sum, s) => sum + s.recommendedPrice, 0);
   const activeRoles = dailyRates.filter(r => r.isActive).length;
 
   const formatCurrency = (value: number) => {
@@ -28,7 +43,7 @@ export default function Dashboard() {
     {
       title: 'Simulations',
       value: totalSimulations.toString(),
-      description: 'Total des simulations créées',
+      description: 'Sur la période sélectionnée',
       icon: Calculator,
       color: 'text-info',
       bgColor: 'bg-info/10',
@@ -81,6 +96,21 @@ export default function Dashboard() {
       title={`Bonjour, ${user?.name.split(' ')[0]}`}
       subtitle={`Bienvenue sur votre espace ${user?.role ? ROLE_LABELS[user.role] : ''}`}
     >
+      {/* Period Filter */}
+      <div className="flex items-center justify-end mb-4">
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Période :</span>
+          <PeriodFilter
+            value={periodFilter}
+            onChange={setPeriodFilter}
+            customRange={customRange}
+            onCustomRangeChange={setCustomRange}
+            onApplyCustomRange={() => {}}
+            showMonthOptions
+          />
+        </div>
+      </div>
+
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         {stats.map((stat, index) => (
@@ -143,7 +173,7 @@ export default function Dashboard() {
       <div>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-foreground">Simulations Récentes</h2>
-          {simulations.length > 0 && (
+          {filteredSimulations.length > 0 && (
             <Link
               to="/history"
               className="text-sm font-medium text-primary hover:underline"
@@ -153,14 +183,14 @@ export default function Dashboard() {
           )}
         </div>
         
-        {simulations.length === 0 ? (
+        {filteredSimulations.length === 0 ? (
           <div className="rounded-xl border border-border bg-card p-12 text-center">
             <div className="mx-auto w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-4">
               <History className="h-6 w-6 text-muted-foreground" />
             </div>
             <h3 className="text-lg font-medium text-foreground mb-2">Aucune simulation</h3>
             <p className="text-muted-foreground mb-4">
-              Créez votre première simulation de prix pour commencer.
+              Aucune simulation sur cette période.
             </p>
             <Link
               to="/calculator"
@@ -182,7 +212,7 @@ export default function Dashboard() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {simulations.slice(0, 5).map((simulation) => (
+                {filteredSimulations.slice(0, 5).map((simulation) => (
                   <tr key={simulation.id} className="hover:bg-muted/30 transition-colors">
                     <td className="px-6 py-4">
                       <div>

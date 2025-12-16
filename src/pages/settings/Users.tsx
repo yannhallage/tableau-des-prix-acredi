@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -14,6 +14,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { PeriodFilter, PeriodType, DateRange, filterByPeriod } from '@/components/filters/PeriodFilter';
 
 type AppRole = 'admin' | 'project_manager' | 'sales';
 
@@ -61,7 +62,8 @@ export default function UsersPage() {
   // Usage history filters
   const [filterUser, setFilterUser] = useState<string>('all');
   const [filterAction, setFilterAction] = useState<string>('all');
-  const [filterPeriod, setFilterPeriod] = useState<string>('all');
+  const [filterPeriod, setFilterPeriod] = useState<PeriodType>('all');
+  const [customRange, setCustomRange] = useState<DateRange>({ start: null, end: null });
 
   const fetchUsers = async () => {
     try {
@@ -235,32 +237,29 @@ export default function UsersPage() {
   const uniqueActions = Array.from(new Set(usageHistory.map(h => h.action)));
 
   // Filter usage history
-  const filteredHistory = usageHistory.filter(entry => {
+  const filteredHistory = useMemo(() => {
+    let filtered = usageHistory;
+    
     // Filter by user
-    if (filterUser !== 'all' && entry.user_id !== filterUser) return false;
-    
-    // Filter by action
-    if (filterAction !== 'all' && entry.action !== filterAction) return false;
-    
-    // Filter by period
-    if (filterPeriod !== 'all') {
-      const entryDate = new Date(entry.created_at);
-      const now = new Date();
-      
-      if (filterPeriod === 'today') {
-        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        if (entryDate < today) return false;
-      } else if (filterPeriod === 'week') {
-        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        if (entryDate < weekAgo) return false;
-      } else if (filterPeriod === 'month') {
-        const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        if (entryDate < monthAgo) return false;
-      }
+    if (filterUser !== 'all') {
+      filtered = filtered.filter(entry => entry.user_id === filterUser);
     }
     
-    return true;
-  });
+    // Filter by action
+    if (filterAction !== 'all') {
+      filtered = filtered.filter(entry => entry.action === filterAction);
+    }
+    
+    // Filter by period using the utility function
+    filtered = filterByPeriod(
+      filtered,
+      (entry) => new Date(entry.created_at),
+      filterPeriod,
+      customRange
+    );
+    
+    return filtered;
+  }, [usageHistory, filterUser, filterAction, filterPeriod, customRange]);
 
   if (isLoading) {
     return (
@@ -399,17 +398,14 @@ export default function UsersPage() {
                   </div>
                   <div className="flex-1 min-w-[200px]">
                     <Label className="text-xs text-muted-foreground mb-1 block">Période</Label>
-                    <Select value={filterPeriod} onValueChange={setFilterPeriod}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Toutes les périodes" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Toutes les périodes</SelectItem>
-                        <SelectItem value="today">Aujourd'hui</SelectItem>
-                        <SelectItem value="week">Cette semaine</SelectItem>
-                        <SelectItem value="month">Ce mois</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <PeriodFilter
+                      value={filterPeriod}
+                      onChange={setFilterPeriod}
+                      customRange={customRange}
+                      onCustomRangeChange={setCustomRange}
+                      onApplyCustomRange={() => {}}
+                      showMonthOptions
+                    />
                   </div>
                 </div>
 
