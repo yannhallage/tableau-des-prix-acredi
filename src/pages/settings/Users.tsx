@@ -16,8 +16,7 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { PeriodFilter, PeriodType, DateRange, filterByPeriod } from '@/components/filters/PeriodFilter';
 import { RoleManagement } from '@/components/settings/RoleManagement';
-
-type AppRole = 'admin' | 'project_manager' | 'sales';
+import { CustomRole } from '@/types';
 
 interface UserProfile {
   id: string;
@@ -25,7 +24,8 @@ interface UserProfile {
   email: string;
   name: string;
   created_at: string;
-  role?: AppRole;
+  custom_role_id?: string | null;
+  role_name?: string;
 }
 
 interface UsageHistoryEntry {
@@ -38,33 +38,56 @@ interface UsageHistoryEntry {
   user_email?: string;
 }
 
-const ROLE_LABELS: Record<AppRole, string> = {
-  admin: 'Administrateur',
-  project_manager: 'Chef de projet',
-  sales: 'Commercial',
-};
-
 export default function UsersPage() {
   const [users, setUsers] = useState<UserProfile[]>([]);
+  const [customRoles, setCustomRoles] = useState<CustomRole[]>([]);
   const [usageHistory, setUsageHistory] = useState<UsageHistoryEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRoleDialogOpen, setIsRoleDialogOpen] = useState(false);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
-  const [newRole, setNewRole] = useState<AppRole>('sales');
+  const [selectedRoleId, setSelectedRoleId] = useState<string>('');
   const [isCreating, setIsCreating] = useState(false);
+  const [isSavingRole, setIsSavingRole] = useState(false);
   
   // New user form state
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserPassword, setNewUserPassword] = useState('');
   const [newUserName, setNewUserName] = useState('');
-  const [newUserRole, setNewUserRole] = useState<AppRole>('sales');
+  const [newUserRoleId, setNewUserRoleId] = useState<string>('');
 
   // Usage history filters
   const [filterUser, setFilterUser] = useState<string>('all');
   const [filterAction, setFilterAction] = useState<string>('all');
   const [filterPeriod, setFilterPeriod] = useState<PeriodType>('all');
   const [customRange, setCustomRange] = useState<DateRange>({ start: null, end: null });
+
+  const fetchCustomRoles = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('custom_roles')
+        .select('*')
+        .order('is_system', { ascending: false })
+        .order('name');
+
+      if (error) throw error;
+
+      const typedRoles: CustomRole[] = (data || []).map(role => ({
+        ...role,
+        permissions: role.permissions as Record<string, boolean>,
+      }));
+
+      setCustomRoles(typedRoles);
+      
+      // Set default role for new users (Commercial/sales equivalent)
+      const defaultRole = typedRoles.find(r => r.name === 'Commercial');
+      if (defaultRole && !newUserRoleId) {
+        setNewUserRoleId(defaultRole.id);
+      }
+    } catch (error) {
+      console.error('Error fetching custom roles:', error);
+    }
+  };
 
   const fetchUsers = async () => {
     try {
@@ -75,16 +98,26 @@ export default function UsersPage() {
 
       if (profilesError) throw profilesError;
 
-      const { data: roles, error: rolesError } = await supabase
+      const { data: userRoles, error: rolesError } = await supabase
         .from('user_roles')
-        .select('user_id, role');
+        .select('user_id, custom_role_id');
 
       if (rolesError) throw rolesError;
 
-      const usersWithRoles = profiles?.map(profile => ({
-        ...profile,
-        role: roles?.find(r => r.user_id === profile.user_id)?.role as AppRole || 'sales',
-      })) || [];
+      const { data: roles } = await supabase
+        .from('custom_roles')
+        .select('id, name');
+
+      const usersWithRoles: UserProfile[] = (profiles || []).map(profile => {
+        const userRole = userRoles?.find(r => r.user_id === profile.user_id);
+        const roleName = roles?.find(r => r.id === userRole?.custom_role_id)?.name;
+        
+        return {
+          ...profile,
+          custom_role_id: userRole?.custom_role_id || null,
+          role_name: roleName || 'Non assigné',
+        };
+      });
 
       setUsers(usersWithRoles);
     } catch (error) {
@@ -130,7 +163,7 @@ export default function UsersPage() {
   useEffect(() => {
     const loadData = async () => {
       setIsLoading(true);
-      await Promise.all([fetchUsers(), fetchUsageHistory()]);
+      await Promise.all([fetchCustomRoles(), fetchUsers(), fetchUsageHistory()]);
       setIsLoading(false);
     };
     loadData();
@@ -138,17 +171,18 @@ export default function UsersPage() {
 
   const openRoleDialog = (user: UserProfile) => {
     setSelectedUser(user);
-    setNewRole(user.role || 'sales');
+    setSelectedRoleId(user.custom_role_id || '');
     setIsRoleDialogOpen(true);
   };
 
   const handleRoleChange = async () => {
-    if (!selectedUser) return;
+    if (!selectedUser || !selectedRoleId) return;
 
+    setIsSavingRole(true);
     try {
       const { error } = await supabase
         .from('user_roles')
-        .update({ role: newRole })
+        .update({ custom_role_id: selectedRoleId })
         .eq('user_id', selectedUser.user_id);
 
       if (error) throw error;
@@ -159,6 +193,8 @@ export default function UsersPage() {
     } catch (error) {
       console.error('Error updating role:', error);
       toast.error('Erreur lors de la mise à jour du rôle');
+    } finally {
+      setIsSavingRole(false);
     }
   };
 
@@ -173,6 +209,11 @@ export default function UsersPage() {
       return;
     }
 
+    if (!newUserRoleId) {
+      toast.error('Veuillez sélectionner un rôle');
+      return;
+    }
+
     setIsCreating(true);
 
     try {
@@ -181,7 +222,7 @@ export default function UsersPage() {
           email: newUserEmail,
           password: newUserPassword,
           name: newUserName,
-          role: newUserRole,
+          customRoleId: newUserRoleId,
         },
       });
 
@@ -205,20 +246,14 @@ export default function UsersPage() {
     setNewUserEmail('');
     setNewUserPassword('');
     setNewUserName('');
-    setNewUserRole('sales');
+    const defaultRole = customRoles.find(r => r.name === 'Commercial');
+    setNewUserRoleId(defaultRole?.id || '');
   };
 
-  const getRoleBadgeVariant = (role: AppRole) => {
-    switch (role) {
-      case 'admin':
-        return 'default';
-      case 'project_manager':
-        return 'secondary';
-      case 'sales':
-        return 'outline';
-      default:
-        return 'outline';
-    }
+  const getRoleBadgeVariant = (roleName: string) => {
+    if (roleName === 'Admin') return 'default';
+    if (roleName === 'Chef de Projet') return 'secondary';
+    return 'outline';
   };
 
   const getActionLabel = (action: string) => {
@@ -330,8 +365,8 @@ export default function UsersPage() {
                           <TableCell className="font-medium">{user.name}</TableCell>
                           <TableCell>{user.email}</TableCell>
                           <TableCell>
-                            <Badge variant={getRoleBadgeVariant(user.role!)}>
-                              {ROLE_LABELS[user.role!] || user.role}
+                            <Badge variant={getRoleBadgeVariant(user.role_name || '')}>
+                              {user.role_name || 'Non assigné'}
                             </Badge>
                           </TableCell>
                           <TableCell>
@@ -477,14 +512,17 @@ export default function UsersPage() {
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label>Nouveau rôle</Label>
-              <Select value={newRole} onValueChange={(value) => setNewRole(value as AppRole)}>
+              <Select value={selectedRoleId} onValueChange={setSelectedRoleId}>
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder="Sélectionner un rôle" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="admin">Administrateur</SelectItem>
-                  <SelectItem value="project_manager">Chef de projet</SelectItem>
-                  <SelectItem value="sales">Commercial</SelectItem>
+                  {customRoles.map((role) => (
+                    <SelectItem key={role.id} value={role.id}>
+                      {role.name}
+                      {role.is_system && ' (Système)'}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -493,8 +531,15 @@ export default function UsersPage() {
             <Button variant="outline" onClick={() => setIsRoleDialogOpen(false)}>
               Annuler
             </Button>
-            <Button onClick={handleRoleChange}>
-              Enregistrer
+            <Button onClick={handleRoleChange} disabled={isSavingRole || !selectedRoleId}>
+              {isSavingRole ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Enregistrement...
+                </>
+              ) : (
+                'Enregistrer'
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -548,14 +593,17 @@ export default function UsersPage() {
             </div>
             <div className="space-y-2">
               <Label>Rôle</Label>
-              <Select value={newUserRole} onValueChange={(value) => setNewUserRole(value as AppRole)}>
+              <Select value={newUserRoleId} onValueChange={setNewUserRoleId}>
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder="Sélectionner un rôle" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="admin">Administrateur</SelectItem>
-                  <SelectItem value="project_manager">Chef de projet</SelectItem>
-                  <SelectItem value="sales">Commercial</SelectItem>
+                  {customRoles.map((role) => (
+                    <SelectItem key={role.id} value={role.id}>
+                      {role.name}
+                      {role.is_system && ' (Système)'}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
