@@ -92,35 +92,42 @@ export function PeriodFilter({
 
   return (
     <div className={`flex items-center gap-2 ${className}`}>
+      <Select value={value === 'custom' ? 'custom' : value} onValueChange={handlePeriodChange}>
+        <SelectTrigger className="w-48">
+          <Calendar className="h-4 w-4 mr-2" />
+          <SelectValue>
+            {getDisplayValue()}
+          </SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">Toutes les périodes</SelectItem>
+          <SelectItem value="today">Aujourd'hui</SelectItem>
+          <SelectItem value="week">Cette semaine</SelectItem>
+          <SelectItem value="month">Ce mois</SelectItem>
+          {showMonthOptions && (
+            <>
+              <SelectItem value="3months">3 derniers mois</SelectItem>
+              <SelectItem value="6months">6 derniers mois</SelectItem>
+              <SelectItem value="12months">12 derniers mois</SelectItem>
+            </>
+          )}
+          <SelectItem value="custom">Période personnalisée...</SelectItem>
+        </SelectContent>
+      </Select>
+
       <Popover open={isCustomOpen} onOpenChange={setIsCustomOpen}>
-        <Select value={value} onValueChange={handlePeriodChange}>
-          <SelectTrigger className="w-48">
-            <Calendar className="h-4 w-4 mr-2" />
-            <SelectValue>
-              {getDisplayValue()}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Toutes les périodes</SelectItem>
-            <SelectItem value="today">Aujourd'hui</SelectItem>
-            <SelectItem value="week">Cette semaine</SelectItem>
-            <SelectItem value="month">Ce mois</SelectItem>
-            {showMonthOptions && (
-              <>
-                <SelectItem value="3months">3 derniers mois</SelectItem>
-                <SelectItem value="6months">6 derniers mois</SelectItem>
-                <SelectItem value="12months">12 derniers mois</SelectItem>
-              </>
-            )}
-            <SelectItem value="custom">Période personnalisée...</SelectItem>
-          </SelectContent>
-        </Select>
-        
         <PopoverTrigger asChild>
-          <span />
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className={value === 'custom' ? 'border-primary' : ''}
+            onClick={() => setIsCustomOpen(true)}
+          >
+            <Calendar className="h-4 w-4" />
+          </Button>
         </PopoverTrigger>
         
-        <PopoverContent className="w-80 p-4" align="start">
+        <PopoverContent className="w-80 p-4" align="start" sideOffset={8}>
           <div className="space-y-4">
             <h4 className="font-medium text-sm text-foreground">Période personnalisée</h4>
             
