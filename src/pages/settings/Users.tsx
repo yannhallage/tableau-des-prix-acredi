@@ -9,12 +9,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Users, UserPlus, Shield, History, Loader2 } from 'lucide-react';
+import { Users, UserPlus, Shield, History, Loader2, Key } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { PeriodFilter, PeriodType, DateRange, filterByPeriod } from '@/components/filters/PeriodFilter';
+import { RoleManagement } from '@/components/settings/RoleManagement';
 
 type AppRole = 'admin' | 'project_manager' | 'sales';
 
@@ -280,6 +281,10 @@ export default function UsersPage() {
               <Users className="h-4 w-4" />
               Utilisateurs
             </TabsTrigger>
+            <TabsTrigger value="roles" className="flex items-center gap-2">
+              <Key className="h-4 w-4" />
+              Rôles & Permissions
+            </TabsTrigger>
             <TabsTrigger value="history" className="flex items-center gap-2">
               <History className="h-4 w-4" />
               Historique d'utilisation
@@ -348,6 +353,10 @@ export default function UsersPage() {
                 )}
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="roles">
+            <RoleManagement />
           </TabsContent>
 
           <TabsContent value="history">
