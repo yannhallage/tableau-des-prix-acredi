@@ -13,9 +13,14 @@ export interface User {
 export interface DailyRate {
   id: string;
   roleName: string;
-  rate: number;
+  rate: number; // Taux journalier
+  hourlyRate: number; // Taux horaire
   isActive: boolean;
 }
+
+// Calculation Mode
+export type CalculationMode = 'daily' | 'hourly';
+export const HOURS_PER_DAY = 8;
 
 // Client Type
 export interface ClientType {

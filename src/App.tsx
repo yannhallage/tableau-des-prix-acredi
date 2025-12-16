@@ -11,6 +11,7 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import CalculatorPage from "./pages/Calculator";
 import HistoryPage from "./pages/History";
+import AnalyticsPage from "./pages/Analytics";
 import DailyRatesPage from "./pages/settings/DailyRates";
 import ClientTypesPage from "./pages/settings/ClientTypes";
 import MarginsPage from "./pages/settings/Margins";
@@ -81,6 +82,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <HistoryPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/analytics"
+        element={
+          <ProtectedRoute>
+            <AnalyticsPage />
           </ProtectedRoute>
         }
       />

@@ -7,7 +7,8 @@ import {
   Percent, 
   FileText,
   LogOut,
-  LayoutDashboard
+  LayoutDashboard,
+  BarChart3
 } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useAuth } from '@/contexts/AuthContext';
@@ -34,6 +35,11 @@ export function AppSidebar() {
       title: 'Historique', 
       url: '/history', 
       icon: History 
+    },
+    { 
+      title: 'Statistiques', 
+      url: '/analytics', 
+      icon: BarChart3 
     },
   ];
 

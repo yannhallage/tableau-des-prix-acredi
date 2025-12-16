@@ -36,12 +36,16 @@ const DataContext = createContext<DataContextType | undefined>(undefined);
 // Initialize default data
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
-const initialDailyRates: DailyRate[] = DEFAULT_ROLES.map((role, index) => ({
-  id: generateId(),
-  roleName: role,
-  rate: [500000, 350000, 250000, 200000, 180000, 300000, 350000, 100000][index] || 200000,
-  isActive: true,
-}));
+const initialDailyRates: DailyRate[] = DEFAULT_ROLES.map((role, index) => {
+  const dailyRate = [500000, 350000, 250000, 200000, 180000, 300000, 350000, 100000][index] || 200000;
+  return {
+    id: generateId(),
+    roleName: role,
+    rate: dailyRate,
+    hourlyRate: Math.round(dailyRate / 8), // 8 heures par jour
+    isActive: true,
+  };
+});
 
 const initialClientTypes: ClientType[] = DEFAULT_CLIENT_TYPES.map(type => ({
   ...type,
