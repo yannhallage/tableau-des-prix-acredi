@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { Trash2 } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -49,6 +50,9 @@ export default function UsersPage() {
   const [selectedRoleId, setSelectedRoleId] = useState<string>('');
   const [isCreating, setIsCreating] = useState(false);
   const [isSavingRole, setIsSavingRole] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<UserProfile | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   
   // New user form state
   const [newUserEmail, setNewUserEmail] = useState('');
@@ -250,6 +254,38 @@ export default function UsersPage() {
     setNewUserRoleId(defaultRole?.id || '');
   };
 
+  const openDeleteDialog = (user: UserProfile) => {
+    setUserToDelete(user);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const handleDeleteUser = async () => {
+    if (!userToDelete) return;
+
+    setIsDeleting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('delete-user', {
+        body: {
+          userId: userToDelete.user_id,
+        },
+      });
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      toast.success('Utilisateur supprimé avec succès');
+      setIsDeleteDialogOpen(false);
+      setUserToDelete(null);
+      fetchUsers();
+      fetchUsageHistory();
+    } catch (error: any) {
+      console.error('Error deleting user:', error);
+      toast.error(error.message || 'Erreur lors de la suppression de l\'utilisateur');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const getRoleBadgeVariant = (roleName: string) => {
     if (roleName === 'Admin') return 'default';
     if (roleName === 'Chef de Projet') return 'secondary';
@@ -373,13 +409,22 @@ export default function UsersPage() {
                             {format(new Date(user.created_at), 'dd MMM yyyy', { locale: fr })}
                           </TableCell>
                           <TableCell className="text-right">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => openRoleDialog(user)}
-                            >
-                              Modifier le rôle
-                            </Button>
+                            <div className="flex items-center justify-end gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => openRoleDialog(user)}
+                              >
+                                Modifier le rôle
+                              </Button>
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => openDeleteDialog(user)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -620,6 +665,43 @@ export default function UsersPage() {
                 </>
               ) : (
                 'Créer l\'utilisateur'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete User Dialog */}
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <Trash2 className="h-5 w-5" />
+              Supprimer l'utilisateur
+            </DialogTitle>
+            <DialogDescription>
+              Êtes-vous sûr de vouloir supprimer l'utilisateur <strong>{userToDelete?.name}</strong> ({userToDelete?.email}) ?
+              <br />
+              <span className="text-destructive font-medium">Cette action est irréversible.</span>
+              <br />
+              Toutes les données associées (profil, rôles, historique) seront également supprimées.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>
+              Annuler
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteUser} disabled={isDeleting}>
+              {isDeleting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Suppression...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Supprimer
+                </>
               )}
             </Button>
           </DialogFooter>
