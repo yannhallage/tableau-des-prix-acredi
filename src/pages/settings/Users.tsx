@@ -18,6 +18,7 @@ import { fr } from 'date-fns/locale';
 import { PeriodFilter, PeriodType, DateRange, filterByPeriod } from '@/components/filters/PeriodFilter';
 import { RoleManagement } from '@/components/settings/RoleManagement';
 import { CustomRole } from '@/types';
+import { usePermissionsContext, PERMISSIONS } from '@/contexts/PermissionsContext';
 
 interface UserProfile {
   id: string;
@@ -40,10 +41,14 @@ interface UsageHistoryEntry {
 }
 
 export default function UsersPage() {
+  const { hasPermission } = usePermissionsContext();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [customRoles, setCustomRoles] = useState<CustomRole[]>([]);
   const [usageHistory, setUsageHistory] = useState<UsageHistoryEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  
+  // Vérifier les permissions
+  const canDeleteUsers = hasPermission('can_delete_users') || hasPermission('can_manage_users');
   const [isRoleDialogOpen, setIsRoleDialogOpen] = useState(false);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
@@ -264,13 +269,44 @@ export default function UsersPage() {
 
     setIsDeleting(true);
     try {
-      const { data, error } = await supabase.functions.invoke('delete-user', {
-        body: {
-          userId: userToDelete.user_id,
+      // Vérifier que l'utilisateur est authentifié et obtenir le token
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !session) {
+        throw new Error('Vous devez être connecté pour effectuer cette action');
+      }
+
+      // Obtenir l'URL et la clé Supabase
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+      // Appeler la fonction Edge directement avec fetch pour s'assurer que le token est passé
+      const response = await fetch(`${supabaseUrl}/functions/v1/delete-user`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+          'apikey': supabaseKey || '',
         },
+        body: JSON.stringify({
+          userId: userToDelete.user_id,
+        }),
       });
 
-      if (error) throw error;
+      const data = await response.json();
+
+      if (!response.ok) {
+        // Vérifier si c'est une erreur 401 (non autorisé)
+        if (response.status === 401) {
+          throw new Error('Vous n\'avez pas les permissions nécessaires pour supprimer cet utilisateur');
+        }
+        // Vérifier si c'est une erreur de déploiement (502)
+        if (response.status === 502) {
+          throw new Error('La fonction de suppression n\'est pas déployée. Veuillez déployer la fonction Edge "delete-user" avec: supabase functions deploy delete-user');
+        }
+        throw new Error(data.error || `Erreur ${response.status}: ${response.statusText}`);
+      }
+      
       if (data?.error) throw new Error(data.error);
 
       toast.success('Utilisateur supprimé avec succès');
@@ -280,7 +316,10 @@ export default function UsersPage() {
       fetchUsageHistory();
     } catch (error: any) {
       console.error('Error deleting user:', error);
-      toast.error(error.message || 'Erreur lors de la suppression de l\'utilisateur');
+      const errorMessage = error.message || 'Erreur lors de la suppression de l\'utilisateur';
+      toast.error(errorMessage, {
+        duration: 5000,
+      });
     } finally {
       setIsDeleting(false);
     }
@@ -417,13 +456,15 @@ export default function UsersPage() {
                               >
                                 Modifier le rôle
                               </Button>
-                              <Button
-                                variant="destructive"
-                                size="sm"
-                                onClick={() => openDeleteDialog(user)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
+                              {canDeleteUsers && (
+                                <Button
+                                  variant="destructive"
+                                  size="sm"
+                                  onClick={() => openDeleteDialog(user)}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              )}
                             </div>
                           </TableCell>
                         </TableRow>

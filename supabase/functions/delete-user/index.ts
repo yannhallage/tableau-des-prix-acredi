@@ -9,24 +9,43 @@ const corsHeaders = {
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { headers: corsHeaders, status: 200 });
   }
 
   try {
+    // Debug: Log all headers
+    console.log('Request method:', req.method);
+    console.log('Request headers:', Object.fromEntries(req.headers.entries()));
+    
     // Get the authorization header to verify the admin user
-    const authHeader = req.headers.get('Authorization');
+    // Try multiple header names as Supabase might use different ones
+    const authHeader = req.headers.get('Authorization') || 
+                      req.headers.get('authorization') ||
+                      req.headers.get('x-authorization');
+    
     if (!authHeader) {
-      console.error('No authorization header');
+      console.error('No authorization header found');
+      console.error('Available headers:', Array.from(req.headers.keys()));
       return new Response(
-        JSON.stringify({ error: 'Non autorisé' }),
+        JSON.stringify({ error: 'Non autorisé - Token d\'authentification manquant' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+    
+    console.log('Authorization header found:', authHeader.substring(0, 20) + '...');
 
     // Create Supabase client with user's token to verify admin status
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+    if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceKey) {
+      console.error('Missing environment variables');
+      return new Response(
+        JSON.stringify({ error: 'Configuration serveur invalide' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     const userClient = createClient(supabaseUrl, supabaseAnonKey, {
       auth: { persistSession: false },
@@ -55,11 +74,11 @@ serve(async (req) => {
       .eq('user_id', currentUser.id)
       .single();
 
-    let hasManageUsersPermission = false;
+    let hasDeleteUsersPermission = false;
 
     // Check legacy admin role
     if (roleData?.role === 'admin') {
-      hasManageUsersPermission = true;
+      hasDeleteUsersPermission = true;
     }
 
     // Check custom role permissions
@@ -70,21 +89,33 @@ serve(async (req) => {
         .eq('id', roleData.custom_role_id)
         .single();
 
-      if (customRole?.permissions?.can_manage_users) {
-        hasManageUsersPermission = true;
+      // Vérifier la permission spécifique de suppression OU la permission générale de gestion
+      if (customRole?.permissions?.can_delete_users || customRole?.permissions?.can_manage_users) {
+        hasDeleteUsersPermission = true;
       }
     }
 
-    if (!hasManageUsersPermission) {
-      console.error('No manage users permission:', roleData);
+    if (!hasDeleteUsersPermission) {
+      console.error('No delete users permission:', roleData);
       return new Response(
-        JSON.stringify({ error: 'Accès réservé aux administrateurs' }),
+        JSON.stringify({ error: 'Accès réservé aux administrateurs - Permission de suppression requise' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     // Parse request body
-    const { userId } = await req.json();
+    let requestBody;
+    try {
+      requestBody = await req.json();
+    } catch (parseError) {
+      console.error('Error parsing request body:', parseError);
+      return new Response(
+        JSON.stringify({ error: 'Corps de requête invalide' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const { userId } = requestBody;
 
     if (!userId) {
       return new Response(
@@ -117,7 +148,7 @@ serve(async (req) => {
     if (deleteError) {
       console.error('Delete user error:', deleteError);
       return new Response(
-        JSON.stringify({ error: deleteError.message }),
+        JSON.stringify({ error: deleteError.message || 'Erreur lors de la suppression' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -125,11 +156,16 @@ serve(async (req) => {
     console.log('User deleted:', userId);
 
     // Log this action
-    await adminClient.from('usage_history').insert({
-      user_id: currentUser.id,
-      action: 'Suppression utilisateur',
-      details: { deleted_user_email: userProfile?.email || userId, deleted_user_name: userProfile?.name }
-    });
+    try {
+      await adminClient.from('usage_history').insert({
+        user_id: currentUser.id,
+        action: 'Suppression utilisateur',
+        details: { deleted_user_email: userProfile?.email || userId, deleted_user_name: userProfile?.name }
+      });
+    } catch (logError) {
+      console.error('Error logging action:', logError);
+      // Don't fail the request if logging fails
+    }
 
     return new Response(
       JSON.stringify({ success: true }),
@@ -139,7 +175,7 @@ serve(async (req) => {
   } catch (error) {
     console.error('Unexpected error:', error);
     return new Response(
-      JSON.stringify({ error: 'Erreur serveur' }),
+      JSON.stringify({ error: error instanceof Error ? error.message : 'Erreur serveur' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

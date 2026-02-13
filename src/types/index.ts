@@ -35,6 +35,7 @@ export const AVAILABLE_PERMISSIONS: Permission[] = [
   { key: 'can_edit_margins', label: 'Modifier les marges', description: 'Configurer les options de marge' },
   { key: 'can_edit_project_types', label: 'Modifier les types de projets', description: 'Gérer les catégories de projets' },
   { key: 'can_manage_users', label: 'Gérer les utilisateurs', description: 'Créer et modifier les utilisateurs' },
+  { key: 'can_delete_users', label: 'Supprimer les utilisateurs', description: 'Supprimer des utilisateurs du système' },
   { key: 'can_manage_roles', label: 'Gérer les rôles', description: 'Créer et modifier les rôles personnalisés' },
   { key: 'can_view_analytics', label: 'Voir les statistiques', description: 'Accès au tableau de bord analytique' },
   { key: 'can_view_usage_history', label: 'Voir l\'historique d\'utilisation', description: 'Consulter les logs d\'activité' },

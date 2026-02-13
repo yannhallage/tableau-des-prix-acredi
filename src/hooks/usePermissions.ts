@@ -156,6 +156,7 @@ export const PERMISSIONS = {
   EDIT_MARGINS: 'can_edit_margins',
   EDIT_PROJECT_TYPES: 'can_edit_project_types',
   MANAGE_USERS: 'can_manage_users',
+  DELETE_USERS: 'can_delete_users',
   MANAGE_ROLES: 'can_manage_roles',
   VIEW_ANALYTICS: 'can_view_analytics',
   VIEW_USAGE_HISTORY: 'can_view_usage_history',
