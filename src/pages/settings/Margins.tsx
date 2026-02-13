@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useData } from '@/contexts/DataContext';
 import { useUsageTracking } from '@/hooks/useUsageTracking';
@@ -29,7 +29,7 @@ import { Margin } from '@/types';
 import { EmptyState } from '@/components/EmptyState';
 
 export default function MarginsPage() {
-  const { margins, updateMargin, addMargin, deleteMargin, isLoadingMargins } = useData();
+  const { margins, updateMargin, addMargin, deleteMargin, isLoadingMargins, refreshMargins } = useData();
   const { trackAction } = useUsageTracking();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -39,6 +39,10 @@ export default function MarginsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    refreshMargins();
+  }, []);
 
   const handleToggle = async (marginId: string, currentState: boolean) => {
     const margin = margins.find(m => m.id === marginId);

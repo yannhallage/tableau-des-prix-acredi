@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useData } from '@/contexts/DataContext';
 import { Button } from '@/components/ui/button';
@@ -18,12 +18,16 @@ import { ClientType } from '@/types';
 import { EmptyState } from '@/components/EmptyState';
 
 export default function ClientTypesPage() {
-  const { clientTypes, updateClientType, addClientType, deleteClientType, isLoadingClientTypes } = useData();
+  const { clientTypes, updateClientType, addClientType, deleteClientType, isLoadingClientTypes, refreshClientTypes } = useData();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingType, setEditingType] = useState<ClientType | null>(null);
   const [formData, setFormData] = useState({ name: '', coefficient: '', description: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    refreshClientTypes();
+  }, []);
 
   const handleOpenDialog = (type?: ClientType) => {
     if (type) {

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useData } from '@/contexts/DataContext';
 import { useUsageTracking } from '@/hooks/useUsageTracking';
@@ -19,7 +19,7 @@ import { DailyRate, HOURS_PER_DAY } from '@/types';
 import { EmptyState } from '@/components/EmptyState';
 
 export default function DailyRatesPage() {
-  const { dailyRates, updateDailyRate, addDailyRate, deleteDailyRate, isLoadingDailyRates } = useData();
+  const { dailyRates, updateDailyRate, addDailyRate, deleteDailyRate, isLoadingDailyRates, refreshDailyRates } = useData();
   const { trackAction } = useUsageTracking();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingRate, setEditingRate] = useState<DailyRate | null>(null);
@@ -32,6 +32,10 @@ export default function DailyRatesPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    refreshDailyRates();
+  }, []);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('fr-FR', {

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useData } from '@/contexts/DataContext';
 import { Button } from '@/components/ui/button';
@@ -31,7 +31,7 @@ const COMPLEXITY_LABELS = {
 };
 
 export default function ProjectTypesPage() {
-  const { projectTypes, updateProjectType, addProjectType, deleteProjectType, isLoadingProjectTypes } = useData();
+  const { projectTypes, updateProjectType, addProjectType, deleteProjectType, isLoadingProjectTypes, refreshProjectTypes } = useData();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingType, setEditingType] = useState<ProjectType | null>(null);
   const [formData, setFormData] = useState({
@@ -41,6 +41,10 @@ export default function ProjectTypesPage() {
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    refreshProjectTypes();
+  }, []);
 
   const handleOpenDialog = (type?: ProjectType) => {
     if (type) {
