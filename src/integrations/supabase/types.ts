@@ -44,6 +44,60 @@ export type Database = {
         }
         Relationships: []
       }
+      margins: {
+        Row: {
+          id: string
+          percentage: number
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          percentage: number
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          percentage?: number
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      daily_rates: {
+        Row: {
+          id: string
+          role_name: string
+          rate: number
+          hourly_rate: number
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          role_name: string
+          rate: number
+          hourly_rate: number
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          role_name?: string
+          rate?: number
+          hourly_rate?: number
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       custom_roles: {
         Row: {
           created_at: string

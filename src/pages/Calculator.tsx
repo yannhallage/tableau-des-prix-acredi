@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Calculator, Save, RotateCcw, MessageSquareText, Clock, Calendar } from 'lucide-react';
+import { Calculator, Save, RotateCcw, MessageSquareText, Clock, Calendar, Loader2 } from 'lucide-react';
 import { CalculationMode, HOURS_PER_DAY } from '@/types';
 
 export default function CalculatorPage() {
@@ -29,6 +29,7 @@ export default function CalculatorPage() {
   const [selectedMargin, setSelectedMargin] = useState('');
   const [roleUnits, setRoleUnits] = useState<Record<string, number>>({});
   const [calculationMode, setCalculationMode] = useState<CalculationMode>('daily');
+  const [isSaving, setIsSaving] = useState(false);
 
   const activeRates = dailyRates.filter(r => r.isActive);
   const activeMargins = margins.filter(m => m.isActive);
@@ -201,6 +202,7 @@ export default function CalculatorPage() {
       return;
     }
 
+    setIsSaving(true);
     const clientType = clientTypes.find(c => c.id === selectedClientType)!;
     const projectType = projectTypes.find(p => p.id === selectedProjectType)!;
 
@@ -231,6 +233,7 @@ export default function CalculatorPage() {
       created_by_name: user.name,
     });
 
+    setIsSaving(false);
     if (error) {
       toast.error('Erreur lors de l\'enregistrement : ' + error.message);
       return;
@@ -509,6 +512,7 @@ export default function CalculatorPage() {
                   variant="outline"
                   onClick={handleReset}
                   className="flex-1"
+                  disabled={isSaving}
                 >
                   <RotateCcw className="h-4 w-4 mr-2" />
                   Réinitialiser
@@ -516,9 +520,19 @@ export default function CalculatorPage() {
                 <Button
                   onClick={handleSave}
                   className="flex-1 btn-primary"
+                  disabled={isSaving}
                 >
-                  <Save className="h-4 w-4 mr-2" />
-                  Enregistrer
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Enregistrement...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4 mr-2" />
+                      Enregistrer
+                    </>
+                  )}
                 </Button>
               </div>
             </div>

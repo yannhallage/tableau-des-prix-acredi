@@ -13,7 +13,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Plus, Pencil, Trash2, Briefcase } from 'lucide-react';
+import { Plus, Pencil, Trash2, Briefcase, Loader2 } from 'lucide-react';
 import { ClientType } from '@/types';
 import { EmptyState } from '@/components/EmptyState';
 
@@ -22,6 +22,8 @@ export default function ClientTypesPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingType, setEditingType] = useState<ClientType | null>(null);
   const [formData, setFormData] = useState({ name: '', coefficient: '', description: '' });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const handleOpenDialog = (type?: ClientType) => {
     if (type) {
@@ -50,6 +52,7 @@ export default function ClientTypesPage() {
       return;
     }
 
+    setIsSubmitting(true);
     const success = editingType
       ? await updateClientType({
           ...editingType,
@@ -63,6 +66,7 @@ export default function ClientTypesPage() {
           description: formData.description,
         });
 
+    setIsSubmitting(false);
     if (success) {
       toast.success(editingType ? 'Type de client modifié' : 'Type de client ajouté');
       setIsDialogOpen(false);
@@ -73,7 +77,9 @@ export default function ClientTypesPage() {
 
   const handleDelete = async (id: string, name: string) => {
     if (confirm(`Êtes-vous sûr de vouloir supprimer "${name}" ?`)) {
+      setDeletingId(id);
       const success = await deleteClientType(id);
+      setDeletingId(null);
       if (success) {
         toast.success('Type de client supprimé');
       } else {
@@ -137,11 +143,18 @@ export default function ClientTypesPage() {
                 />
               </div>
               <div className="flex gap-3 pt-4">
-                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} className="flex-1">
+                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} className="flex-1" disabled={isSubmitting}>
                   Annuler
                 </Button>
-                <Button type="submit" className="flex-1 btn-primary">
-                  {editingType ? 'Modifier' : 'Ajouter'}
+                <Button type="submit" className="flex-1 btn-primary" disabled={isSubmitting}>
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      {editingType ? 'Modification...' : 'Ajout...'}
+                    </>
+                  ) : (
+                    editingType ? 'Modifier' : 'Ajouter'
+                  )}
                 </Button>
               </div>
             </form>
@@ -188,8 +201,13 @@ export default function ClientTypesPage() {
                     size="sm"
                     onClick={() => handleDelete(type.id, type.name)}
                     className="text-destructive hover:text-destructive"
+                    disabled={deletingId === type.id}
                   >
-                    <Trash2 className="h-4 w-4" />
+                    {deletingId === type.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-4 w-4" />
+                    )}
                   </Button>
                 </div>
               </div>

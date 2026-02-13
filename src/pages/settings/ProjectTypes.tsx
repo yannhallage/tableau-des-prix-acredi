@@ -20,8 +20,9 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Plus, Pencil, Trash2, FileText } from 'lucide-react';
+import { Plus, Pencil, Trash2, FileText, Loader2 } from 'lucide-react';
 import { ProjectType } from '@/types';
+import { EmptyState } from '@/components/EmptyState';
 
 const COMPLEXITY_LABELS = {
   low: { label: 'Faible', color: 'badge-success' },
@@ -38,6 +39,8 @@ export default function ProjectTypesPage() {
     description: '',
     complexityLevel: 'medium' as 'low' | 'medium' | 'high',
   });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const handleOpenDialog = (type?: ProjectType) => {
     if (type) {
@@ -62,6 +65,7 @@ export default function ProjectTypesPage() {
       return;
     }
 
+    setIsSubmitting(true);
     const success = editingType
       ? await updateProjectType({
           ...editingType,
@@ -75,6 +79,7 @@ export default function ProjectTypesPage() {
           complexityLevel: formData.complexityLevel,
         });
 
+    setIsSubmitting(false);
     if (success) {
       toast.success(editingType ? 'Type de projet modifié' : 'Type de projet ajouté');
       setIsDialogOpen(false);
@@ -83,10 +88,16 @@ export default function ProjectTypesPage() {
     }
   };
 
-  const handleDelete = (id: string, name: string) => {
+  const handleDelete = async (id: string, name: string) => {
     if (confirm(`Êtes-vous sûr de vouloir supprimer "${name}" ?`)) {
-      deleteProjectType(id);
-      toast.success('Type de projet supprimé');
+      setDeletingId(id);
+      const success = await deleteProjectType(id);
+      setDeletingId(null);
+      if (success) {
+        toast.success('Type de projet supprimé');
+      } else {
+        toast.error('Erreur lors de la suppression');
+      }
     }
   };
 
@@ -148,11 +159,18 @@ export default function ProjectTypesPage() {
                 </Select>
               </div>
               <div className="flex gap-3 pt-4">
-                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} className="flex-1">
+                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} className="flex-1" disabled={isSubmitting}>
                   Annuler
                 </Button>
-                <Button type="submit" className="flex-1 btn-primary">
-                  {editingType ? 'Modifier' : 'Ajouter'}
+                <Button type="submit" className="flex-1 btn-primary" disabled={isSubmitting}>
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      {editingType ? 'Modification...' : 'Ajout...'}
+                    </>
+                  ) : (
+                    editingType ? 'Modifier' : 'Ajouter'
+                  )}
                 </Button>
               </div>
             </form>
@@ -160,70 +178,86 @@ export default function ProjectTypesPage() {
         </Dialog>
       </div>
 
-      <div className="card-elevated overflow-hidden">
-        <table className="w-full">
-          <thead className="table-header">
-            <tr>
-              <th className="px-6 py-4 text-left">Type de Projet</th>
-              <th className="px-6 py-4 text-left">Description</th>
-              <th className="px-6 py-4 text-center">Complexité</th>
-              <th className="px-6 py-4 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {isLoadingProjectTypes ? (
+      {isLoadingProjectTypes ? (
+        <div className="card-elevated p-12 text-center text-muted-foreground">
+          Chargement...
+        </div>
+      ) : projectTypes.length === 0 ? (
+        <EmptyState
+          icon={FileText}
+          title="Aucun type de projet"
+          description="Commencez par ajouter votre premier type de projet pour organiser vos tarifications."
+          action={
+            <Button onClick={() => handleOpenDialog()} className="btn-primary">
+              <Plus className="h-4 w-4 mr-2" />
+              Ajouter un type
+            </Button>
+          }
+        />
+      ) : (
+        <div className="card-elevated overflow-hidden">
+          <table className="w-full">
+            <thead className="table-header">
               <tr>
-                <td colSpan={4} className="px-6 py-12 text-center text-muted-foreground">
-                  Chargement...
-                </td>
+                <th className="px-6 py-4 text-left">Type de Projet</th>
+                <th className="px-6 py-4 text-left">Description</th>
+                <th className="px-6 py-4 text-center">Complexité</th>
+                <th className="px-6 py-4 text-right">Actions</th>
               </tr>
-            ) : (
-            projectTypes.map((type, index) => (
-              <tr
-                key={type.id}
-                className="hover:bg-muted/30 transition-colors animate-fade-in"
-                style={{ animationDelay: `${index * 30}ms` }}
-              >
-                <td className="px-6 py-4">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-muted">
-                      <FileText className="h-4 w-4 text-muted-foreground" />
+            </thead>
+            <tbody className="divide-y divide-border">
+              {projectTypes.map((type, index) => (
+                <tr
+                  key={type.id}
+                  className="hover:bg-muted/30 transition-colors animate-fade-in"
+                  style={{ animationDelay: `${index * 30}ms` }}
+                >
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-muted">
+                        <FileText className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                      <span className="font-medium text-foreground">{type.name}</span>
                     </div>
-                    <span className="font-medium text-foreground">{type.name}</span>
-                  </div>
-                </td>
-                <td className="px-6 py-4 text-muted-foreground max-w-xs truncate">
-                  {type.description || '—'}
-                </td>
-                <td className="px-6 py-4 text-center">
-                  <span className={COMPLEXITY_LABELS[type.complexityLevel].color}>
-                    {COMPLEXITY_LABELS[type.complexityLevel].label}
-                  </span>
-                </td>
-                <td className="px-6 py-4 text-right">
-                  <div className="flex items-center justify-end gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleOpenDialog(type)}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDelete(type.id, type.name)}
-                      className="text-destructive hover:text-destructive"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </td>
-              </tr>
-            )))}
-          </tbody>
-        </table>
-      </div>
+                  </td>
+                  <td className="px-6 py-4 text-muted-foreground max-w-xs truncate">
+                    {type.description || '—'}
+                  </td>
+                  <td className="px-6 py-4 text-center">
+                    <span className={COMPLEXITY_LABELS[type.complexityLevel].color}>
+                      {COMPLEXITY_LABELS[type.complexityLevel].label}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleOpenDialog(type)}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDelete(type.id, type.name)}
+                        className="text-destructive hover:text-destructive"
+                        disabled={deletingId === type.id}
+                      >
+                        {deletingId === type.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </DashboardLayout>
   );
 }

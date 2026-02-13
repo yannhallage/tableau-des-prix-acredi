@@ -5,10 +5,11 @@ import {
   Margin,
   ProjectType,
   Simulation,
-  DEFAULT_ROLES,
 } from '@/types';
 import * as clientTypeService from '@/services/clientTypeService';
 import * as projectTypeService from '@/services/projectTypeService';
+import * as dailyRateService from '@/services/dailyRateService';
+import * as marginService from '@/services/marginService';
 
 interface DataContextType {
   dailyRates: DailyRate[];
@@ -18,16 +19,20 @@ interface DataContextType {
   simulations: Simulation[];
   isLoadingClientTypes: boolean;
   isLoadingProjectTypes: boolean;
-  updateDailyRate: (rate: DailyRate) => void;
-  addDailyRate: (rate: Omit<DailyRate, 'id'>) => void;
-  deleteDailyRate: (id: string) => void;
+  isLoadingDailyRates: boolean;
+  isLoadingMargins: boolean;
+  updateDailyRate: (rate: DailyRate) => Promise<boolean>;
+  addDailyRate: (rate: Omit<DailyRate, 'id'>) => Promise<boolean>;
+  deleteDailyRate: (id: string) => Promise<boolean>;
+  refreshDailyRates: () => Promise<void>;
   updateClientType: (type: ClientType) => Promise<boolean>;
   addClientType: (type: Omit<ClientType, 'id'>) => Promise<boolean>;
   deleteClientType: (id: string) => Promise<boolean>;
   refreshClientTypes: () => Promise<void>;
-  updateMargin: (margin: Margin) => void;
-  addMargin: (margin: Omit<Margin, 'id'>) => void;
-  deleteMargin: (id: string) => void;
+  updateMargin: (margin: Margin) => Promise<boolean>;
+  addMargin: (margin: Omit<Margin, 'id'>) => Promise<boolean>;
+  deleteMargin: (id: string) => Promise<boolean>;
+  refreshMargins: () => Promise<void>;
   updateProjectType: (type: ProjectType) => Promise<boolean>;
   addProjectType: (type: Omit<ProjectType, 'id'>) => Promise<boolean>;
   deleteProjectType: (id: string) => Promise<boolean>;
@@ -39,31 +44,25 @@ const DataContext = createContext<DataContextType | undefined>(undefined);
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
-const initialDailyRates: DailyRate[] = DEFAULT_ROLES.map((role, index) => {
-  const dailyRate = [500000, 350000, 250000, 200000, 180000, 300000, 350000, 100000][index] || 200000;
-  return {
-    id: generateId(),
-    roleName: role,
-    rate: dailyRate,
-    hourlyRate: Math.round(dailyRate / 8),
-    isActive: true,
-  };
-});
-
-const initialMargins: Margin[] = [
-  { id: generateId(), percentage: 30, isActive: true },
-  { id: generateId(), percentage: 40, isActive: true },
-  { id: generateId(), percentage: 50, isActive: true },
-];
-
 export function DataProvider({ children }: { children: ReactNode }) {
-  const [dailyRates, setDailyRates] = useState<DailyRate[]>(initialDailyRates);
+  const [dailyRates, setDailyRates] = useState<DailyRate[]>([]);
   const [clientTypes, setClientTypes] = useState<ClientType[]>([]);
-  const [margins, setMargins] = useState<Margin[]>(initialMargins);
+  const [margins, setMargins] = useState<Margin[]>([]);
   const [projectTypes, setProjectTypes] = useState<ProjectType[]>([]);
   const [simulations, setSimulations] = useState<Simulation[]>([]);
   const [isLoadingClientTypes, setIsLoadingClientTypes] = useState(true);
   const [isLoadingProjectTypes, setIsLoadingProjectTypes] = useState(true);
+  const [isLoadingDailyRates, setIsLoadingDailyRates] = useState(true);
+  const [isLoadingMargins, setIsLoadingMargins] = useState(true);
+
+  const refreshDailyRates = async () => {
+    setIsLoadingDailyRates(true);
+    const { data, error } = await dailyRateService.getDailyRates();
+    if (!error && data) {
+      setDailyRates(data);
+    }
+    setIsLoadingDailyRates(false);
+  };
 
   const refreshClientTypes = async () => {
     setIsLoadingClientTypes(true);
@@ -83,6 +82,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setIsLoadingProjectTypes(false);
   };
 
+  const refreshMargins = async () => {
+    setIsLoadingMargins(true);
+    const { data, error } = await marginService.getMargins();
+    if (!error && data) {
+      setMargins(data);
+    }
+    setIsLoadingMargins(false);
+  };
+
   useEffect(() => {
     refreshClientTypes();
   }, []);
@@ -91,16 +99,33 @@ export function DataProvider({ children }: { children: ReactNode }) {
     refreshProjectTypes();
   }, []);
 
-  const updateDailyRate = (rate: DailyRate) => {
-    setDailyRates(prev => prev.map(r => r.id === rate.id ? rate : r));
+  useEffect(() => {
+    refreshDailyRates();
+  }, []);
+
+  useEffect(() => {
+    refreshMargins();
+  }, []);
+
+  const updateDailyRate = async (rate: DailyRate): Promise<boolean> => {
+    const { data, error } = await dailyRateService.updateDailyRate(rate);
+    if (error || !data) return false;
+    setDailyRates(prev => prev.map(r => r.id === rate.id ? data : r));
+    return true;
   };
 
-  const addDailyRate = (rate: Omit<DailyRate, 'id'>) => {
-    setDailyRates(prev => [...prev, { ...rate, id: generateId() }]);
+  const addDailyRate = async (rate: Omit<DailyRate, 'id'>): Promise<boolean> => {
+    const { data, error } = await dailyRateService.createDailyRate(rate);
+    if (error || !data) return false;
+    setDailyRates(prev => [...prev, data]);
+    return true;
   };
 
-  const deleteDailyRate = (id: string) => {
+  const deleteDailyRate = async (id: string): Promise<boolean> => {
+    const { error } = await dailyRateService.deleteDailyRate(id);
+    if (error) return false;
     setDailyRates(prev => prev.filter(r => r.id !== id));
+    return true;
   };
 
   const updateClientType = async (type: ClientType): Promise<boolean> => {
@@ -124,16 +149,25 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return true;
   };
 
-  const updateMargin = (margin: Margin) => {
-    setMargins(prev => prev.map(m => m.id === margin.id ? margin : m));
+  const updateMargin = async (margin: Margin): Promise<boolean> => {
+    const { data, error } = await marginService.updateMargin(margin);
+    if (error || !data) return false;
+    setMargins(prev => prev.map(m => m.id === margin.id ? data : m));
+    return true;
   };
 
-  const addMargin = (margin: Omit<Margin, 'id'>) => {
-    setMargins(prev => [...prev, { ...margin, id: generateId() }]);
+  const addMargin = async (margin: Omit<Margin, 'id'>): Promise<boolean> => {
+    const { data, error } = await marginService.createMargin(margin);
+    if (error || !data) return false;
+    setMargins(prev => [...prev, data]);
+    return true;
   };
 
-  const deleteMargin = (id: string) => {
+  const deleteMargin = async (id: string): Promise<boolean> => {
+    const { error } = await marginService.deleteMargin(id);
+    if (error) return false;
     setMargins(prev => prev.filter(m => m.id !== id));
+    return true;
   };
 
   const updateProjectType = async (type: ProjectType): Promise<boolean> => {
@@ -170,9 +204,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
       simulations,
       isLoadingClientTypes,
       isLoadingProjectTypes,
+      isLoadingDailyRates,
+      isLoadingMargins,
       updateDailyRate,
       addDailyRate,
       deleteDailyRate,
+      refreshDailyRates,
       updateClientType,
       addClientType,
       deleteClientType,
@@ -180,6 +217,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       updateMargin,
       addMargin,
       deleteMargin,
+      refreshMargins,
       updateProjectType,
       addProjectType,
       deleteProjectType,

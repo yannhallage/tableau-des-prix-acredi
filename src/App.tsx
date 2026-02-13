@@ -32,14 +32,23 @@ function ProtectedRoute({
   children: React.ReactNode; 
   requiredPermission?: string;
 }) {
-  const { isAuthenticated } = useAuth();
-  const { hasPermission, isLoading } = usePermissionsContext();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { hasPermission, isLoading: permissionsLoading } = usePermissionsContext();
+
+  // Wait for auth to finish loading before making routing decisions
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
 
-  if (isLoading) {
+  if (permissionsLoading) {
     return (
       <div className="flex items-center justify-center h-screen">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -56,7 +65,16 @@ function ProtectedRoute({
 
 // Auth Redirect (for login page when already authenticated)
 function AuthRedirect({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isLoading } = useAuth();
+
+  // Wait for auth to finish loading before redirecting
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
 
   if (isAuthenticated) {
     return <Navigate to="/dashboard" replace />;

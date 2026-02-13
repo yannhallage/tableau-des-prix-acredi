@@ -24,24 +24,34 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
-import { Percent, Plus, Pencil, Trash2 } from 'lucide-react';
+import { Percent, Plus, Pencil, Trash2, Loader2 } from 'lucide-react';
 import { Margin } from '@/types';
+import { EmptyState } from '@/components/EmptyState';
 
 export default function MarginsPage() {
-  const { margins, updateMargin, addMargin, deleteMargin } = useData();
+  const { margins, updateMargin, addMargin, deleteMargin, isLoadingMargins } = useData();
   const { trackAction } = useUsageTracking();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [editingMargin, setEditingMargin] = useState<Margin | null>(null);
   const [marginToDelete, setMarginToDelete] = useState<Margin | null>(null);
   const [formData, setFormData] = useState({ percentage: '' });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
-  const handleToggle = (marginId: string, currentState: boolean) => {
+  const handleToggle = async (marginId: string, currentState: boolean) => {
     const margin = margins.find(m => m.id === marginId);
     if (margin) {
-      updateMargin({ ...margin, isActive: !currentState });
-      trackAction('Modification marge', { action: 'toggle', percentage: margin.percentage, newState: !currentState });
-      toast.success(currentState ? 'Marge désactivée' : 'Marge activée');
+      setTogglingId(marginId);
+      const success = await updateMargin({ ...margin, isActive: !currentState });
+      setTogglingId(null);
+      if (success) {
+        trackAction('Modification marge', { action: 'toggle', percentage: margin.percentage, newState: !currentState });
+        toast.success(currentState ? 'Marge désactivée' : 'Marge activée');
+      } else {
+        toast.error('Erreur lors de la mise à jour');
+      }
     }
   };
 
@@ -62,7 +72,7 @@ export default function MarginsPage() {
     setIsDeleteDialogOpen(true);
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const percentage = parseInt(formData.percentage, 10);
     
     if (isNaN(percentage) || percentage <= 0 || percentage > 100) {
@@ -79,23 +89,32 @@ export default function MarginsPage() {
       return;
     }
 
-    if (editingMargin) {
-      updateMargin({ ...editingMargin, percentage });
-      toast.success('Marge modifiée');
-    } else {
-      addMargin({ percentage, isActive: true });
-      toast.success('Marge ajoutée');
-    }
+    setIsSubmitting(true);
+    const success = editingMargin
+      ? await updateMargin({ ...editingMargin, percentage })
+      : await addMargin({ percentage, isActive: true });
 
-    setIsDialogOpen(false);
+    setIsSubmitting(false);
+    if (success) {
+      toast.success(editingMargin ? 'Marge modifiée' : 'Marge ajoutée');
+      setIsDialogOpen(false);
+    } else {
+      toast.error('Erreur lors de l\'enregistrement');
+    }
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (marginToDelete) {
-      deleteMargin(marginToDelete.id);
-      toast.success('Marge supprimée');
-      setIsDeleteDialogOpen(false);
-      setMarginToDelete(null);
+      setIsDeleting(true);
+      const success = await deleteMargin(marginToDelete.id);
+      setIsDeleting(false);
+      if (success) {
+        toast.success('Marge supprimée');
+        setIsDeleteDialogOpen(false);
+        setMarginToDelete(null);
+      } else {
+        toast.error('Erreur lors de la suppression');
+      }
     }
   };
 
@@ -125,10 +144,22 @@ export default function MarginsPage() {
           </div>
 
           <div className="space-y-4">
-            {margins.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                Aucune marge configurée. Ajoutez-en une pour commencer.
+            {isLoadingMargins ? (
+              <div className="text-center py-12 text-muted-foreground">
+                Chargement...
               </div>
+            ) : margins.length === 0 ? (
+              <EmptyState
+                icon={Percent}
+                title="Aucune marge configurée"
+                description="Commencez par ajouter votre première marge pour configurer les options du calculateur."
+                action={
+                  <Button onClick={openAddDialog} size="sm">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Ajouter une marge
+                  </Button>
+                }
+              />
             ) : (
               margins
                 .sort((a, b) => a.percentage - b.percentage)
@@ -157,6 +188,7 @@ export default function MarginsPage() {
                         size="icon"
                         onClick={() => openEditDialog(margin)}
                         className="h-8 w-8"
+                        disabled={togglingId === margin.id}
                       >
                         <Pencil className="h-4 w-4" />
                       </Button>
@@ -165,6 +197,7 @@ export default function MarginsPage() {
                         size="icon"
                         onClick={() => openDeleteDialog(margin)}
                         className="h-8 w-8 text-destructive hover:text-destructive"
+                        disabled={togglingId === margin.id}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -210,11 +243,18 @@ export default function MarginsPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+            <Button variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>
               Annuler
             </Button>
-            <Button onClick={handleSubmit}>
-              {editingMargin ? 'Modifier' : 'Ajouter'}
+            <Button onClick={handleSubmit} disabled={isSubmitting}>
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  {editingMargin ? 'Modification...' : 'Ajout...'}
+                </>
+              ) : (
+                editingMargin ? 'Modifier' : 'Ajouter'
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -231,9 +271,16 @@ export default function MarginsPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Supprimer
+            <AlertDialogCancel disabled={isDeleting}>Annuler</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} disabled={isDeleting} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {isDeleting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Suppression...
+                </>
+              ) : (
+                'Supprimer'
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

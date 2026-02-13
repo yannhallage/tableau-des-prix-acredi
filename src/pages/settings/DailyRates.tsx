@@ -14,11 +14,12 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Plus, Pencil, Trash2, Users, Clock } from 'lucide-react';
+import { Plus, Pencil, Trash2, Users, Clock, Loader2 } from 'lucide-react';
 import { DailyRate, HOURS_PER_DAY } from '@/types';
+import { EmptyState } from '@/components/EmptyState';
 
 export default function DailyRatesPage() {
-  const { dailyRates, updateDailyRate, addDailyRate, deleteDailyRate } = useData();
+  const { dailyRates, updateDailyRate, addDailyRate, deleteDailyRate, isLoadingDailyRates } = useData();
   const { trackAction } = useUsageTracking();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingRate, setEditingRate] = useState<DailyRate | null>(null);
@@ -28,6 +29,9 @@ export default function DailyRatesPage() {
     hourlyRate: '',
     isActive: true 
   });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('fr-FR', {
@@ -71,7 +75,7 @@ export default function DailyRatesPage() {
     }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!formData.roleName.trim()) {
@@ -83,44 +87,63 @@ export default function DailyRatesPage() {
       return;
     }
 
+    setIsSubmitting(true);
     const dailyRate = parseFloat(formData.rate);
     const hourlyRate = parseFloat(formData.hourlyRate) || Math.round(dailyRate / HOURS_PER_DAY);
 
-    if (editingRate) {
-      updateDailyRate({
-        ...editingRate,
+    const success = editingRate
+      ? await updateDailyRate({
+          ...editingRate,
+          roleName: formData.roleName,
+          rate: dailyRate,
+          hourlyRate: hourlyRate,
+          isActive: formData.isActive,
+        })
+      : await addDailyRate({
+          roleName: formData.roleName,
+          rate: dailyRate,
+          hourlyRate: hourlyRate,
+          isActive: formData.isActive,
+        });
+
+    setIsSubmitting(false);
+    if (success) {
+      trackAction('Modification TJM', {
+        action: editingRate ? 'update' : 'add',
         roleName: formData.roleName,
         rate: dailyRate,
-        hourlyRate: hourlyRate,
-        isActive: formData.isActive,
+        hourlyRate,
       });
-      trackAction('Modification TJM', { action: 'update', roleName: formData.roleName, rate: dailyRate, hourlyRate });
-      toast.success('Taux journalier modifié');
+      toast.success(editingRate ? 'Taux journalier modifié' : 'Taux journalier ajouté');
+      setIsDialogOpen(false);
     } else {
-      addDailyRate({
-        roleName: formData.roleName,
-        rate: dailyRate,
-        hourlyRate: hourlyRate,
-        isActive: formData.isActive,
-      });
-      trackAction('Modification TJM', { action: 'add', roleName: formData.roleName, rate: dailyRate, hourlyRate });
-      toast.success('Taux journalier ajouté');
+      toast.error('Erreur lors de l\'enregistrement');
     }
-
-    setIsDialogOpen(false);
   };
 
-  const handleDelete = (id: string, roleName: string) => {
+  const handleDelete = async (id: string, roleName: string) => {
     if (confirm(`Êtes-vous sûr de vouloir supprimer le rôle "${roleName}" ?`)) {
-      deleteDailyRate(id);
-      trackAction('Modification TJM', { action: 'delete', roleName });
-      toast.success('Taux journalier supprimé');
+      setDeletingId(id);
+      const success = await deleteDailyRate(id);
+      setDeletingId(null);
+      if (success) {
+        trackAction('Modification TJM', { action: 'delete', roleName });
+        toast.success('Taux journalier supprimé');
+      } else {
+        toast.error('Erreur lors de la suppression');
+      }
     }
   };
 
-  const handleToggleActive = (rate: DailyRate) => {
-    updateDailyRate({ ...rate, isActive: !rate.isActive });
-    toast.success(rate.isActive ? 'Rôle désactivé' : 'Rôle activé');
+  const handleToggleActive = async (rate: DailyRate) => {
+    setTogglingId(rate.id);
+    const success = await updateDailyRate({ ...rate, isActive: !rate.isActive });
+    setTogglingId(null);
+    if (success) {
+      toast.success(rate.isActive ? 'Rôle désactivé' : 'Rôle activé');
+    } else {
+      toast.error('Erreur lors de la mise à jour');
+    }
   };
 
   return (
@@ -186,11 +209,18 @@ export default function DailyRatesPage() {
                 />
               </div>
               <div className="flex gap-3 pt-4">
-                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} className="flex-1">
+                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} className="flex-1" disabled={isSubmitting}>
                   Annuler
                 </Button>
-                <Button type="submit" className="flex-1 btn-primary">
-                  {editingRate ? 'Modifier' : 'Ajouter'}
+                <Button type="submit" className="flex-1 btn-primary" disabled={isSubmitting}>
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      {editingRate ? 'Modification...' : 'Ajout...'}
+                    </>
+                  ) : (
+                    editingRate ? 'Modifier' : 'Ajouter'
+                  )}
                 </Button>
               </div>
             </form>
@@ -198,71 +228,98 @@ export default function DailyRatesPage() {
         </Dialog>
       </div>
 
-      <div className="card-elevated overflow-hidden">
-        <table className="w-full">
-          <thead className="table-header">
-            <tr>
-              <th className="px-6 py-4 text-left">Rôle</th>
-              <th className="px-6 py-4 text-right">Taux Journalier</th>
-              <th className="px-6 py-4 text-right">Taux Horaire</th>
-              <th className="px-6 py-4 text-center">Statut</th>
-              <th className="px-6 py-4 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {dailyRates.map((rate, index) => (
-              <tr
-                key={rate.id}
-                className="hover:bg-muted/30 transition-colors animate-fade-in"
-                style={{ animationDelay: `${index * 30}ms` }}
-              >
-                <td className="px-6 py-4">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-muted">
-                      <Users className="h-4 w-4 text-muted-foreground" />
-                    </div>
-                    <span className="font-medium text-foreground">{rate.roleName}</span>
-                  </div>
-                </td>
-                <td className="px-6 py-4 text-right font-medium text-foreground">
-                  {formatCurrency(rate.rate)}
-                </td>
-                <td className="px-6 py-4 text-right">
-                  <div className="flex items-center justify-end gap-1 text-muted-foreground">
-                    <Clock className="h-3 w-3" />
-                    <span>{formatCurrency(rate.hourlyRate)}</span>
-                  </div>
-                </td>
-                <td className="px-6 py-4 text-center">
-                  <Switch
-                    checked={rate.isActive}
-                    onCheckedChange={() => handleToggleActive(rate)}
-                  />
-                </td>
-                <td className="px-6 py-4 text-right">
-                  <div className="flex items-center justify-end gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleOpenDialog(rate)}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDelete(rate.id, rate.roleName)}
-                      className="text-destructive hover:text-destructive"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </td>
+      {isLoadingDailyRates ? (
+        <div className="card-elevated p-12 text-center text-muted-foreground">
+          Chargement...
+        </div>
+      ) : dailyRates.length === 0 ? (
+        <EmptyState
+          icon={Users}
+          title="Aucun taux journalier"
+          description="Commencez par ajouter votre premier rôle et son TJM pour configurer vos tarifications."
+          action={
+            <Button onClick={() => handleOpenDialog()} className="btn-primary">
+              <Plus className="h-4 w-4 mr-2" />
+              Ajouter un rôle
+            </Button>
+          }
+        />
+      ) : (
+        <div className="card-elevated overflow-hidden">
+          <table className="w-full">
+            <thead className="table-header">
+              <tr>
+                <th className="px-6 py-4 text-left">Rôle</th>
+                <th className="px-6 py-4 text-right">Taux Journalier</th>
+                <th className="px-6 py-4 text-right">Taux Horaire</th>
+                <th className="px-6 py-4 text-center">Statut</th>
+                <th className="px-6 py-4 text-right">Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {dailyRates.map((rate, index) => (
+                <tr
+                  key={rate.id}
+                  className="hover:bg-muted/30 transition-colors animate-fade-in"
+                  style={{ animationDelay: `${index * 30}ms` }}
+                >
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-muted">
+                        <Users className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                      <span className="font-medium text-foreground">{rate.roleName}</span>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 text-right font-medium text-foreground">
+                    {formatCurrency(rate.rate)}
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <div className="flex items-center justify-end gap-1 text-muted-foreground">
+                      <Clock className="h-3 w-3" />
+                      <span>{formatCurrency(rate.hourlyRate)}</span>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 text-center">
+                    {togglingId === rate.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground mx-auto" />
+                    ) : (
+                      <Switch
+                        checked={rate.isActive}
+                        onCheckedChange={() => handleToggleActive(rate)}
+                      />
+                    )}
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleOpenDialog(rate)}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDelete(rate.id, rate.roleName)}
+                        className="text-destructive hover:text-destructive"
+                        disabled={deletingId === rate.id}
+                      >
+                        {deletingId === rate.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </DashboardLayout>
   );
 }
