@@ -1,78 +1,68 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useAuth } from '@/contexts/AuthContext';
-import { useData } from '@/contexts/DataContext';
 import { Calculator, History, TrendingUp, Users } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { ROLE_LABELS } from '@/types';
-import { PeriodFilter, PeriodType, DateRange, filterByPeriod } from '@/components/filters/PeriodFilter';
+import { PeriodFilter, PeriodType, DateRange } from '@/components/filters/PeriodFilter';
+import { getDashboardData, formatCurrency, type DashboardStatCard, type RecentSimulation } from '@/services/dashboardService';
 
 export default function Dashboard() {
   const { user, hasPermission } = useAuth();
-  const { simulations, dailyRates, clientTypes, projectTypes } = useData();
-  
   const [periodFilter, setPeriodFilter] = useState<PeriodType>('month');
   const [customRange, setCustomRange] = useState<DateRange>({ start: null, end: null });
+  const [statCards, setStatCards] = useState<DashboardStatCard[]>([]);
+  const [recentSimulations, setRecentSimulations] = useState<RecentSimulation[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
 
   const isAdmin = hasPermission(['admin']);
 
-  // Filter simulations by period
-  const filteredSimulations = useMemo(() => {
-    return filterByPeriod(
-      simulations,
-      (s) => new Date(s.createdAt),
-      periodFilter,
-      customRange
-    );
-  }, [simulations, periodFilter, customRange]);
+  // Charger les données du dashboard
+  useEffect(() => {
+    const loadDashboardData = async () => {
+      if (!user) return;
+      
+      setIsLoading(true);
+      setError(null);
+      
+      const { data, error: dashboardError } = await getDashboardData({
+        userId: user.user_id,
+        isAdmin,
+        periodFilter,
+        customRange,
+      });
 
-  // Calculate stats based on filtered simulations
-  const totalSimulations = filteredSimulations.length;
-  const totalRevenue = filteredSimulations.reduce((sum, s) => sum + s.recommendedPrice, 0);
-  const activeRoles = dailyRates.filter(r => r.isActive).length;
+      if (dashboardError) {
+        setError(dashboardError);
+        setIsLoading(false);
+        return;
+      }
 
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('fr-FR', {
-      style: 'decimal',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(value) + ' FCFA';
-  };
+      if (data) {
+        setStatCards(data.statCards);
+        setRecentSimulations(data.recentSimulations);
+      }
+      
+      setIsLoading(false);
+    };
 
-  const stats = [
-    {
-      title: 'Simulations',
-      value: totalSimulations.toString(),
-      description: 'Sur la période sélectionnée',
-      icon: Calculator,
-      color: 'text-info',
-      bgColor: 'bg-info/10',
-    },
-    {
-      title: 'Valeur Totale',
-      value: formatCurrency(totalRevenue),
-      description: 'Montant total des devis',
-      icon: TrendingUp,
-      color: 'text-success',
-      bgColor: 'bg-success/10',
-    },
-    {
-      title: 'Rôles Actifs',
-      value: activeRoles.toString(),
-      description: 'Profils tarifaires configurés',
-      icon: Users,
-      color: 'text-accent',
-      bgColor: 'bg-accent/10',
-    },
-    {
-      title: 'Types de Projets',
-      value: projectTypes.length.toString(),
-      description: 'Catégories de projets',
-      icon: History,
-      color: 'text-warning',
-      bgColor: 'bg-warning/10',
-    },
-  ];
+    loadDashboardData();
+  }, [user, isAdmin, periodFilter, customRange]);
+
+  // Ajouter les icônes aux cartes de statistiques
+  const stats = statCards.map((card, index) => {
+    const icons = [Calculator, TrendingUp, Users, History];
+    const colors = ['text-info', 'text-success', 'text-accent', 'text-warning'];
+    const bgColors = ['bg-info/10', 'bg-success/10', 'bg-accent/10', 'bg-warning/10'];
+    
+    return {
+      ...card,
+      icon: icons[index] || Calculator,
+      color: colors[index] || 'text-info',
+      bgColor: bgColors[index] || 'bg-info/10',
+    };
+  });
 
   const quickActions = [
     {
@@ -173,7 +163,7 @@ export default function Dashboard() {
       <div>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-foreground">Simulations Récentes</h2>
-          {filteredSimulations.length > 0 && (
+          {recentSimulations.length > 0 && (
             <Link
               to="/history"
               className="text-sm font-medium text-primary hover:underline"
@@ -183,7 +173,24 @@ export default function Dashboard() {
           )}
         </div>
         
-        {filteredSimulations.length === 0 ? (
+        {isLoading ? (
+          <div className="rounded-xl border border-border bg-card p-12 text-center">
+            <div className="mx-auto w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-4">
+              <History className="h-6 w-6 text-muted-foreground animate-pulse" />
+            </div>
+            <p className="text-muted-foreground">Chargement...</p>
+          </div>
+        ) : error ? (
+          <div className="rounded-xl border border-border bg-card p-12 text-center">
+            <div className="mx-auto w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center mb-4">
+              <History className="h-6 w-6 text-destructive" />
+            </div>
+            <h3 className="text-lg font-medium text-foreground mb-2">Erreur</h3>
+            <p className="text-muted-foreground mb-4">
+              {error.message}
+            </p>
+          </div>
+        ) : recentSimulations.length === 0 ? (
           <div className="rounded-xl border border-border bg-card p-12 text-center">
             <div className="mx-auto w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-4">
               <History className="h-6 w-6 text-muted-foreground" />
@@ -212,15 +219,15 @@ export default function Dashboard() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {filteredSimulations.slice(0, 5).map((simulation) => (
+                {recentSimulations.map((simulation) => (
                   <tr key={simulation.id} className="hover:bg-muted/30 transition-colors">
                     <td className="px-6 py-4">
                       <div>
                         <p className="font-medium text-foreground">{simulation.clientName}</p>
-                        <p className="text-sm text-muted-foreground">{simulation.clientType.name}</p>
+                        <p className="text-sm text-muted-foreground">{simulation.clientTypeName}</p>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-foreground">{simulation.projectType.name}</td>
+                    <td className="px-6 py-4 text-foreground">{simulation.projectTypeName}</td>
                     <td className="px-6 py-4 text-muted-foreground">
                       {new Date(simulation.createdAt).toLocaleDateString('fr-FR')}
                     </td>

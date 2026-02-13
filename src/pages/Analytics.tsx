@@ -1,6 +1,6 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
-import { useData } from '@/contexts/DataContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { Card } from '@/components/ui/card';
 import {
   BarChart,
@@ -18,122 +18,64 @@ import {
   Legend,
 } from 'recharts';
 import { BarChart3, PieChart as PieChartIcon, TrendingUp } from 'lucide-react';
-import { format, subMonths, subDays } from 'date-fns';
-import { fr } from 'date-fns/locale';
-import { PeriodFilter, PeriodType, DateRange, filterByPeriod } from '@/components/filters/PeriodFilter';
+import { PeriodFilter, PeriodType, DateRange } from '@/components/filters/PeriodFilter';
+import { 
+  getStatisticsData, 
+  formatCurrency, 
+  formatCompactCurrency,
+  type SummaryStats,
+  type ClientTypeData,
+  type MonthData
+} from '@/services/statisticsService';
 
 const COLORS = ['hsl(var(--primary))', 'hsl(var(--accent))', 'hsl(var(--info))', 'hsl(var(--success))', 'hsl(var(--warning))', '#8884d8', '#82ca9d', '#ffc658'];
 
 export default function AnalyticsPage() {
-  const { simulations, clientTypes } = useData();
+  const { user, hasPermission } = useAuth();
   const [periodFilter, setPeriodFilter] = useState<PeriodType>('6months');
   const [customRange, setCustomRange] = useState<DateRange>({ start: null, end: null });
+  const [stats, setStats] = useState<SummaryStats>({ totalSimulations: 0, totalRevenue: 0, avgRevenue: 0 });
+  const [dataByClientType, setDataByClientType] = useState<ClientTypeData[]>([]);
+  const [dataByMonth, setDataByMonth] = useState<MonthData[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+  const [hasData, setHasData] = useState(false);
 
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('fr-FR', {
-      style: 'decimal',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(value) + ' FCFA';
-  };
+  const isAdmin = hasPermission(['admin']);
 
-  const formatCompactCurrency = (value: number) => {
-    if (value >= 1000000) {
-      return (value / 1000000).toFixed(1) + 'M';
-    }
-    if (value >= 1000) {
-      return (value / 1000).toFixed(0) + 'K';
-    }
-    return value.toString();
-  };
+  // Charger les données statistiques
+  useEffect(() => {
+    const loadStatisticsData = async () => {
+      if (!user) return;
+      
+      setIsLoading(true);
+      setError(null);
+      
+      const { data, error: statisticsError } = await getStatisticsData({
+        userId: user.user_id,
+        isAdmin,
+        periodFilter,
+        customRange,
+      });
 
-  // Get number of months for chart data
-  const getMonthsCount = (): number => {
-    switch (periodFilter) {
-      case 'today': return 1;
-      case 'week': return 1;
-      case 'month': return 1;
-      case '3months': return 3;
-      case '6months': return 6;
-      case '12months': return 12;
-      case 'custom':
-        if (customRange.start && customRange.end) {
-          const diffTime = Math.abs(customRange.end.getTime() - customRange.start.getTime());
-          const diffMonths = Math.ceil(diffTime / (1000 * 60 * 60 * 24 * 30));
-          return Math.max(1, Math.min(diffMonths, 12));
-        }
-        return 6;
-      default: return 6;
-    }
-  };
-
-  // Filter simulations by period
-  const filteredSimulations = useMemo(() => {
-    return filterByPeriod(
-      simulations,
-      (sim) => new Date(sim.createdAt),
-      periodFilter,
-      customRange
-    );
-  }, [simulations, periodFilter, customRange]);
-
-  // Data by client type
-  const dataByClientType = useMemo(() => {
-    const grouped = filteredSimulations.reduce((acc, sim) => {
-      const typeName = sim.clientType.name;
-      if (!acc[typeName]) {
-        acc[typeName] = { count: 0, revenue: 0 };
+      if (statisticsError) {
+        setError(statisticsError);
+        setIsLoading(false);
+        return;
       }
-      acc[typeName].count += 1;
-      acc[typeName].revenue += sim.recommendedPrice;
-      return acc;
-    }, {} as Record<string, { count: number; revenue: number }>);
 
-    return Object.entries(grouped).map(([name, data]) => ({
-      name,
-      simulations: data.count,
-      revenue: data.revenue,
-    }));
-  }, [filteredSimulations]);
-
-  // Data by month
-  const dataByMonth = useMemo(() => {
-    const months = getMonthsCount();
-    const monthsData: Record<string, { month: string; simulations: number; revenue: number }> = {};
-    
-    // Initialize all months
-    for (let i = months - 1; i >= 0; i--) {
-      const date = subMonths(new Date(), i);
-      const key = format(date, 'yyyy-MM');
-      const label = format(date, 'MMM yyyy', { locale: fr });
-      monthsData[key] = { month: label, simulations: 0, revenue: 0 };
-    }
-
-    // Fill with data
-    filteredSimulations.forEach(sim => {
-      const simDate = new Date(sim.createdAt);
-      const key = format(simDate, 'yyyy-MM');
-      if (monthsData[key]) {
-        monthsData[key].simulations += 1;
-        monthsData[key].revenue += sim.recommendedPrice;
+      if (data) {
+        setStats(data.summaryStats);
+        setDataByClientType(data.dataByClientType);
+        setDataByMonth(data.dataByMonth);
+        setHasData(data.summaryStats.totalSimulations > 0);
       }
-    });
-
-    return Object.values(monthsData);
-  }, [filteredSimulations, periodFilter]);
-
-  // Summary stats
-  const stats = useMemo(() => {
-    const totalSimulations = filteredSimulations.length;
-    const totalRevenue = filteredSimulations.reduce((sum, s) => sum + s.recommendedPrice, 0);
-    const avgRevenue = totalSimulations > 0 ? totalRevenue / totalSimulations : 0;
-    
-    return {
-      totalSimulations,
-      totalRevenue,
-      avgRevenue,
+      
+      setIsLoading(false);
     };
-  }, [filteredSimulations]);
+
+    loadStatisticsData();
+  }, [user, isAdmin, periodFilter, customRange]);
 
   return (
     <DashboardLayout
@@ -192,7 +134,20 @@ export default function AnalyticsPage() {
         </Card>
       </div>
 
-      {simulations.length === 0 ? (
+      {isLoading ? (
+        <Card className="p-12 text-center">
+          <BarChart3 className="h-12 w-12 mx-auto text-muted-foreground mb-4 animate-pulse" />
+          <p className="text-muted-foreground">Chargement des statistiques...</p>
+        </Card>
+      ) : error ? (
+        <Card className="p-12 text-center">
+          <BarChart3 className="h-12 w-12 mx-auto text-destructive mb-4" />
+          <h3 className="text-lg font-medium text-foreground mb-2">Erreur</h3>
+          <p className="text-muted-foreground">
+            {error.message}
+          </p>
+        </Card>
+      ) : !hasData ? (
         <Card className="p-12 text-center">
           <BarChart3 className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
           <h3 className="text-lg font-medium text-foreground mb-2">Aucune donnée disponible</h3>
