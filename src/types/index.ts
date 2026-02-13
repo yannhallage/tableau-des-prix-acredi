@@ -118,24 +118,5 @@ export const DEFAULT_ROLES = [
   'Assistant',
 ];
 
-// Default Client Types
-export const DEFAULT_CLIENT_TYPES: Omit<ClientType, 'id'>[] = [
-  { name: 'Micro-entreprise', coefficient: 0.8, description: 'Petites structures, startups' },
-  { name: 'PME', coefficient: 1.0, description: 'Petites et moyennes entreprises' },
-  { name: 'École / Formation', coefficient: 0.85, description: 'Établissements éducatifs' },
-  { name: 'Marque / E-commerce', coefficient: 1.2, description: 'Marques et boutiques en ligne' },
-  { name: 'ONG Locale', coefficient: 0.7, description: 'Organisations non gouvernementales locales' },
-  { name: 'Institution Publique', coefficient: 1.1, description: 'Administrations et services publics' },
-  { name: 'Cabinet Juridique', coefficient: 1.3, description: 'Avocats et notaires' },
-  { name: 'Organisation Internationale', coefficient: 1.5, description: 'ONG internationales, ambassades' },
-];
-
-// Default Project Types
-export const DEFAULT_PROJECT_TYPES: Omit<ProjectType, 'id'>[] = [
-  { name: 'Gestion des réseaux sociaux', description: 'Community management mensuel', complexityLevel: 'medium' },
-  { name: 'Branding', description: 'Identité visuelle complète', complexityLevel: 'high' },
-  { name: 'Site vitrine', description: 'Site web institutionnel', complexityLevel: 'medium' },
-  { name: 'Stratégie digitale', description: 'Audit et plan stratégique', complexityLevel: 'high' },
-  { name: 'Vidéo / Motion', description: 'Production audiovisuelle', complexityLevel: 'high' },
-  { name: 'Mandat long terme', description: 'Accompagnement sur plusieurs mois', complexityLevel: 'medium' },
-];
+// Les types de clients et de projets sont désormais stockés en base de données (Supabase)
+// Voir : clientTypeService et projectTypeService

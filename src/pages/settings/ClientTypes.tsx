@@ -15,9 +15,10 @@ import {
 import { toast } from 'sonner';
 import { Plus, Pencil, Trash2, Briefcase } from 'lucide-react';
 import { ClientType } from '@/types';
+import { EmptyState } from '@/components/EmptyState';
 
 export default function ClientTypesPage() {
-  const { clientTypes, updateClientType, addClientType, deleteClientType } = useData();
+  const { clientTypes, updateClientType, addClientType, deleteClientType, isLoadingClientTypes } = useData();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingType, setEditingType] = useState<ClientType | null>(null);
   const [formData, setFormData] = useState({ name: '', coefficient: '', description: '' });
@@ -37,9 +38,9 @@ export default function ClientTypesPage() {
     setIsDialogOpen(true);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.name.trim()) {
       toast.error('Veuillez saisir un nom');
       return;
@@ -49,30 +50,35 @@ export default function ClientTypesPage() {
       return;
     }
 
-    if (editingType) {
-      updateClientType({
-        ...editingType,
-        name: formData.name,
-        coefficient: parseFloat(formData.coefficient),
-        description: formData.description,
-      });
-      toast.success('Type de client modifié');
-    } else {
-      addClientType({
-        name: formData.name,
-        coefficient: parseFloat(formData.coefficient),
-        description: formData.description,
-      });
-      toast.success('Type de client ajouté');
-    }
+    const success = editingType
+      ? await updateClientType({
+          ...editingType,
+          name: formData.name,
+          coefficient: parseFloat(formData.coefficient),
+          description: formData.description,
+        })
+      : await addClientType({
+          name: formData.name,
+          coefficient: parseFloat(formData.coefficient),
+          description: formData.description,
+        });
 
-    setIsDialogOpen(false);
+    if (success) {
+      toast.success(editingType ? 'Type de client modifié' : 'Type de client ajouté');
+      setIsDialogOpen(false);
+    } else {
+      toast.error('Erreur lors de l\'enregistrement');
+    }
   };
 
-  const handleDelete = (id: string, name: string) => {
+  const handleDelete = async (id: string, name: string) => {
     if (confirm(`Êtes-vous sûr de vouloir supprimer "${name}" ?`)) {
-      deleteClientType(id);
-      toast.success('Type de client supprimé');
+      const success = await deleteClientType(id);
+      if (success) {
+        toast.success('Type de client supprimé');
+      } else {
+        toast.error('Erreur lors de la suppression');
+      }
     }
   };
 
@@ -143,45 +149,61 @@ export default function ClientTypesPage() {
         </Dialog>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {clientTypes.map((type, index) => (
-          <div
-            key={type.id}
-            className="card-elevated p-5 animate-fade-in"
-            style={{ animationDelay: `${index * 50}ms` }}
-          >
-            <div className="flex items-start justify-between mb-3">
-              <div className="p-2 rounded-lg bg-muted">
-                <Briefcase className="h-5 w-5 text-muted-foreground" />
+      {isLoadingClientTypes ? (
+        <div className="py-12 text-center text-muted-foreground">Chargement...</div>
+      ) : clientTypes.length === 0 ? (
+        <EmptyState
+          icon={Briefcase}
+          title="Aucun type de client"
+          description="Commencez par ajouter votre premier type de client pour organiser vos tarifications."
+          action={
+            <Button onClick={() => handleOpenDialog()} className="btn-primary">
+              <Plus className="h-4 w-4 mr-2" />
+              Ajouter un type
+            </Button>
+          }
+        />
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {clientTypes.map((type, index) => (
+            <div
+              key={type.id}
+              className="card-elevated p-5 animate-fade-in"
+              style={{ animationDelay: `${index * 50}ms` }}
+            >
+              <div className="flex items-start justify-between mb-3">
+                <div className="p-2 rounded-lg bg-muted">
+                  <Briefcase className="h-5 w-5 text-muted-foreground" />
+                </div>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleOpenDialog(type)}
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleDelete(type.id, type.name)}
+                    className="text-destructive hover:text-destructive"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
-              <div className="flex items-center gap-1">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleOpenDialog(type)}
-                >
-                  <Pencil className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleDelete(type.id, type.name)}
-                  className="text-destructive hover:text-destructive"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+              <h3 className="font-semibold text-foreground mb-1">{type.name}</h3>
+              <div className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-accent/20 text-accent-foreground text-sm font-medium mb-2">
+                ×{type.coefficient.toFixed(2)}
               </div>
+              {type.description && (
+                <p className="text-sm text-muted-foreground mt-2">{type.description}</p>
+              )}
             </div>
-            <h3 className="font-semibold text-foreground mb-1">{type.name}</h3>
-            <div className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-accent/20 text-accent-foreground text-sm font-medium mb-2">
-              ×{type.coefficient.toFixed(2)}
-            </div>
-            {type.description && (
-              <p className="text-sm text-muted-foreground mt-2">{type.description}</p>
-            )}
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </DashboardLayout>
   );
 }

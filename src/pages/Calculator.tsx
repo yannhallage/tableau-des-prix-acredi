@@ -3,6 +3,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useAuth } from '@/contexts/AuthContext';
 import { useData } from '@/contexts/DataContext';
 import { useUsageTracking } from '@/hooks/useUsageTracking';
+import { createSimulation } from '@/services/simulationService';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -174,7 +175,7 @@ export default function CalculatorPage() {
     setRoleUnits({});
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!clientName.trim()) {
       toast.error('Veuillez saisir le nom du client');
       return;
@@ -195,6 +196,10 @@ export default function CalculatorPage() {
       toast.error('Veuillez saisir au moins une unité de travail');
       return;
     }
+    if (!user?.user_id) {
+      toast.error('Utilisateur non connecté');
+      return;
+    }
 
     const clientType = clientTypes.find(c => c.id === selectedClientType)!;
     const projectType = projectTypes.find(p => p.id === selectedProjectType)!;
@@ -213,20 +218,32 @@ export default function CalculatorPage() {
         };
       });
 
-    addSimulation({
-      clientName,
-      clientType,
-      projectType,
-      roleDays: roleDaysData,
+    const { data: savedSimulation, error } = await createSimulation({
+      client_name: clientName,
+      client_type: clientType,
+      project_type: projectType,
+      role_days: roleDaysData,
       margin: parseFloat(selectedMargin),
-      internalCost: calculations.internalCost,
-      costAfterCoefficient: calculations.costAfterCoefficient,
-      recommendedPrice: calculations.recommendedPrice,
-      createdBy: user!,
-      createdAt: new Date(),
+      internal_cost: calculations.internalCost,
+      cost_after_coefficient: calculations.costAfterCoefficient,
+      recommended_price: calculations.recommendedPrice,
+      created_by: user.user_id,
+      created_by_name: user.name,
     });
 
-    // Track the simulation creation
+    if (error) {
+      toast.error('Erreur lors de l\'enregistrement : ' + error.message);
+      return;
+    }
+
+    if (savedSimulation) {
+      addSimulation({
+        ...savedSimulation,
+        createdBy: user,
+        createdAt: savedSimulation.createdAt,
+      });
+    }
+
     trackAction('Simulation créée', {
       clientName,
       clientType: clientType.name,

@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      client_types: {
+        Row: {
+          id: string
+          name: string
+          coefficient: number
+          description: string | null
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          coefficient?: number
+          description?: string | null
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          coefficient?: number
+          description?: string | null
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       custom_roles: {
         Row: {
           created_at: string
@@ -44,6 +74,36 @@ export type Database = {
         }
         Relationships: []
       }
+      project_types: {
+        Row: {
+          id: string
+          name: string
+          description: string | null
+          complexity_level: 'low' | 'medium' | 'high'
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          description?: string | null
+          complexity_level?: 'low' | 'medium' | 'high'
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          description?: string | null
+          complexity_level?: 'low' | 'medium' | 'high'
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string
@@ -68,6 +128,51 @@ export type Database = {
           name?: string
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      simulations: {
+        Row: {
+          id: string
+          client_name: string
+          client_type: Json
+          project_type: Json
+          role_days: Json
+          margin: number
+          internal_cost: number
+          cost_after_coefficient: number
+          recommended_price: number
+          created_by: string | null
+          created_by_name: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          client_name: string
+          client_type: Json
+          project_type: Json
+          role_days?: Json
+          margin: number
+          internal_cost: number
+          cost_after_coefficient: number
+          recommended_price: number
+          created_by?: string | null
+          created_by_name?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          client_name?: string
+          client_type?: Json
+          project_type?: Json
+          role_days?: Json
+          margin?: number
+          internal_cost?: number
+          cost_after_coefficient?: number
+          recommended_price?: number
+          created_by?: string | null
+          created_by_name?: string | null
+          created_at?: string
         }
         Relationships: []
       }

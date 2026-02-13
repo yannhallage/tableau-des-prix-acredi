@@ -30,7 +30,7 @@ const COMPLEXITY_LABELS = {
 };
 
 export default function ProjectTypesPage() {
-  const { projectTypes, updateProjectType, addProjectType, deleteProjectType } = useData();
+  const { projectTypes, updateProjectType, addProjectType, deleteProjectType, isLoadingProjectTypes } = useData();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingType, setEditingType] = useState<ProjectType | null>(null);
   const [formData, setFormData] = useState({
@@ -54,32 +54,33 @@ export default function ProjectTypesPage() {
     setIsDialogOpen(true);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.name.trim()) {
       toast.error('Veuillez saisir un nom');
       return;
     }
 
-    if (editingType) {
-      updateProjectType({
-        ...editingType,
-        name: formData.name,
-        description: formData.description,
-        complexityLevel: formData.complexityLevel,
-      });
-      toast.success('Type de projet modifié');
-    } else {
-      addProjectType({
-        name: formData.name,
-        description: formData.description,
-        complexityLevel: formData.complexityLevel,
-      });
-      toast.success('Type de projet ajouté');
-    }
+    const success = editingType
+      ? await updateProjectType({
+          ...editingType,
+          name: formData.name,
+          description: formData.description,
+          complexityLevel: formData.complexityLevel,
+        })
+      : await addProjectType({
+          name: formData.name,
+          description: formData.description,
+          complexityLevel: formData.complexityLevel,
+        });
 
-    setIsDialogOpen(false);
+    if (success) {
+      toast.success(editingType ? 'Type de projet modifié' : 'Type de projet ajouté');
+      setIsDialogOpen(false);
+    } else {
+      toast.error('Erreur lors de l\'enregistrement');
+    }
   };
 
   const handleDelete = (id: string, name: string) => {
@@ -170,7 +171,14 @@ export default function ProjectTypesPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {projectTypes.map((type, index) => (
+            {isLoadingProjectTypes ? (
+              <tr>
+                <td colSpan={4} className="px-6 py-12 text-center text-muted-foreground">
+                  Chargement...
+                </td>
+              </tr>
+            ) : (
+            projectTypes.map((type, index) => (
               <tr
                 key={type.id}
                 className="hover:bg-muted/30 transition-colors animate-fade-in"
@@ -212,7 +220,7 @@ export default function ProjectTypesPage() {
                   </div>
                 </td>
               </tr>
-            ))}
+            )))}
           </tbody>
         </table>
       </div>

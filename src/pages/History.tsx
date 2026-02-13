@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { useAuth } from '@/contexts/AuthContext';
 import { useData } from '@/contexts/DataContext';
@@ -10,18 +10,30 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Search, History, Filter } from 'lucide-react';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Search, History, Filter, Eye, Users, Briefcase, BarChart3 } from 'lucide-react';
 import { Simulation } from '@/types';
 import { PeriodFilter, PeriodType, DateRange, filterByPeriod } from '@/components/filters/PeriodFilter';
+import { getSimulations } from '@/services/simulationService';
 
 export default function HistoryPage() {
   const { user, hasPermission } = useAuth();
-  const { simulations, clientTypes } = useData();
+  const { clientTypes } = useData();
 
+  const [simulations, setSimulations] = useState<Simulation[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [clientTypeFilter, setClientTypeFilter] = useState('all');
   const [periodFilter, setPeriodFilter] = useState<PeriodType>('all');
   const [customRange, setCustomRange] = useState<DateRange>({ start: null, end: null });
+  const [selectedSimulation, setSelectedSimulation] = useState<Simulation | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
 
   const isAdmin = hasPermission(['admin']);
 
@@ -41,15 +53,33 @@ export default function HistoryPage() {
     });
   };
 
+  // Fetch simulations from Supabase
+  useEffect(() => {
+    const fetchSimulations = async () => {
+      setIsLoading(true);
+      const { data, error } = await getSimulations({
+        userId: user?.user_id,
+        isAdmin,
+      });
+
+      if (!error && data) {
+        setSimulations(data);
+      } else if (error) {
+        console.error('Erreur chargement simulations:', error);
+        setSimulations([]);
+      }
+      setIsLoading(false);
+    };
+
+    if (user) {
+      fetchSimulations();
+    }
+  }, [user?.user_id, isAdmin]);
+
   const filteredSimulations = useMemo(() => {
     let filtered = [...simulations];
 
-    // For non-admin users, only show their own simulations
-    if (!isAdmin) {
-      filtered = filtered.filter(s => s.createdBy.id === user?.id);
-    }
-
-    // Search filter
+    // Search filter (client-side si déjà pas appliqué par l'API)
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(s =>
@@ -72,7 +102,12 @@ export default function HistoryPage() {
     );
 
     return filtered;
-  }, [simulations, searchQuery, clientTypeFilter, periodFilter, customRange, isAdmin, user]);
+  }, [simulations, searchQuery, clientTypeFilter, periodFilter, customRange]);
+
+  const handleViewDetails = (simulation: Simulation) => {
+    setSelectedSimulation(simulation);
+    setDetailOpen(true);
+  };
 
   return (
     <DashboardLayout
@@ -119,7 +154,12 @@ export default function HistoryPage() {
       </div>
 
       {/* Results */}
-      {filteredSimulations.length === 0 ? (
+      {isLoading ? (
+        <div className="card-elevated p-12 text-center">
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary mx-auto mb-4" />
+          <p className="text-muted-foreground">Chargement des simulations...</p>
+        </div>
+      ) : filteredSimulations.length === 0 ? (
         <div className="card-elevated p-12 text-center">
           <div className="mx-auto w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-4">
             <History className="h-6 w-6 text-muted-foreground" />
@@ -145,6 +185,7 @@ export default function HistoryPage() {
                 <th className="px-6 py-4 text-left">Date</th>
                 <th className="px-6 py-4 text-right">Coût Interne</th>
                 <th className="px-6 py-4 text-right">Prix Recommandé</th>
+                <th className="px-6 py-4 text-right w-20">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -182,6 +223,15 @@ export default function HistoryPage() {
                       {formatCurrency(simulation.recommendedPrice)}
                     </span>
                   </td>
+                  <td className="px-6 py-4 text-right">
+                    <button
+                      onClick={() => handleViewDetails(simulation)}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-sm font-medium text-primary hover:bg-primary/10 transition-colors"
+                    >
+                      <Eye className="h-4 w-4" />
+                      Détails
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -212,6 +262,99 @@ export default function HistoryPage() {
           </div>
         </div>
       )}
+
+      {/* Detail Sheet */}
+      <Sheet open={detailOpen} onOpenChange={setDetailOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-xl">
+          <SheetHeader>
+            <SheetTitle>Détails de la simulation</SheetTitle>
+          </SheetHeader>
+          {selectedSimulation && (
+            <ScrollArea className="h-[calc(100vh-8rem)] mt-6 pr-4">
+              <div className="space-y-6">
+                {/* Client Info */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-foreground font-medium">
+                    <Users className="h-4 w-4" />
+                    Client
+                  </div>
+                  <div className="pl-6 space-y-1">
+                    <p className="font-medium">{selectedSimulation.clientName}</p>
+                    <p className="text-sm text-muted-foreground">
+                      Type : {selectedSimulation.clientType.name} (×{selectedSimulation.clientType.coefficient})
+                    </p>
+                  </div>
+                </div>
+
+                {/* Project Type */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-foreground font-medium">
+                    <Briefcase className="h-4 w-4" />
+                    Type de projet
+                  </div>
+                  <div className="pl-6 space-y-1">
+                    <p>{selectedSimulation.projectType.name}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {selectedSimulation.projectType.description}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Complexité : {selectedSimulation.projectType.complexityLevel === 'high' ? 'Élevée' : selectedSimulation.projectType.complexityLevel === 'medium' ? 'Moyenne' : 'Faible'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Role Days */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-foreground font-medium">
+                    <BarChart3 className="h-4 w-4" />
+                    Charge de travail
+                  </div>
+                  <div className="pl-6">
+                    <div className="space-y-2">
+                      {selectedSimulation.roleDays.map((rd, i) => (
+                        <div key={i} className="flex justify-between text-sm py-1 border-b border-border/50 last:border-0">
+                          <span>{rd.roleName}</span>
+                          <span>
+                            {rd.days} j × {formatCurrency(rd.rate)} = {formatCurrency(rd.days * rd.rate)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Financial Summary */}
+                <div className="space-y-3 p-4 rounded-lg bg-muted/50">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Coût interne</span>
+                    <span>{formatCurrency(selectedSimulation.internalCost)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Après coefficient</span>
+                    <span>{formatCurrency(selectedSimulation.costAfterCoefficient)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Marge ({selectedSimulation.margin}%)</span>
+                    <span>{formatCurrency(selectedSimulation.recommendedPrice - selectedSimulation.costAfterCoefficient)}</span>
+                  </div>
+                  <div className="flex justify-between font-semibold pt-2 border-t border-border">
+                    <span>Prix recommandé</span>
+                    <span className="text-primary">{formatCurrency(selectedSimulation.recommendedPrice)}</span>
+                  </div>
+                </div>
+
+                {/* Meta */}
+                <div className="text-sm text-muted-foreground pt-2">
+                  <p>Créée le {formatDate(selectedSimulation.createdAt)}</p>
+                  {selectedSimulation.createdBy?.name && (
+                    <p>Par {selectedSimulation.createdBy.name}</p>
+                  )}
+                </div>
+              </div>
+            </ScrollArea>
+          )}
+        </SheetContent>
+      </Sheet>
     </DashboardLayout>
   );
 }
