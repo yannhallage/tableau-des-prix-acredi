@@ -19,6 +19,7 @@ import { PeriodFilter, PeriodType, DateRange, filterByPeriod } from '@/component
 import { RoleManagement } from '@/components/settings/RoleManagement';
 import { CustomRole } from '@/types';
 import { usePermissionsContext, PERMISSIONS } from '@/contexts/PermissionsContext';
+// import { createUser } from '@/services/userService';
 
 interface UserProfile {
   id: string;
@@ -209,24 +210,31 @@ export default function UsersPage() {
 
   const handleCreateUser = async () => {
     if (!newUserEmail || !newUserPassword || !newUserName) {
-      toast.error('Veuillez remplir tous les champs');
+      toast.error("Veuillez remplir tous les champs");
       return;
     }
-
+  
     if (newUserPassword.length < 6) {
-      toast.error('Le mot de passe doit contenir au moins 6 caractères');
+      toast.error("Le mot de passe doit contenir au moins 6 caractères");
       return;
     }
-
+  
     if (!newUserRoleId) {
-      toast.error('Veuillez sélectionner un rôle');
+      toast.error("Veuillez sélectionner un rôle");
       return;
     }
-
+  
     setIsCreating(true);
-
+  
     try {
-      const { data, error } = await supabase.functions.invoke('create-user', {
+      // 🔐 Vérifier simplement que l'utilisateur est connecté
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error("Vous devez être connecté");
+      }
+  
+      // 🚀 Appel PROPRE de la Edge Function
+      const { data, error } = await supabase.functions.invoke("create-user", {
         body: {
           email: newUserEmail,
           password: newUserPassword,
@@ -234,22 +242,30 @@ export default function UsersPage() {
           customRoleId: newUserRoleId,
         },
       });
-
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
-
-      toast.success('Utilisateur créé avec succès');
+  
+      if (error) {
+        console.error(error);
+        throw error;
+      }
+  
+      if (data?.error) {
+        throw new Error(data.error);
+      }
+  
+      toast.success("Utilisateur créé avec succès");
       setIsCreateDialogOpen(false);
       resetCreateForm();
       fetchUsers();
       fetchUsageHistory();
-    } catch (error: any) {
-      console.error('Error creating user:', error);
-      toast.error(error.message || 'Erreur lors de la création de l\'utilisateur');
+  
+    } catch (err: any) {
+      console.error("Create user error:", err);
+      toast.error(err.message || "Erreur lors de la création");
     } finally {
       setIsCreating(false);
     }
   };
+  
 
   const resetCreateForm = () => {
     setNewUserEmail('');
@@ -266,64 +282,92 @@ export default function UsersPage() {
 
   const handleDeleteUser = async () => {
     if (!userToDelete) return;
-
+  
     setIsDeleting(true);
     try {
-      // Vérifier que l'utilisateur est authentifié et obtenir le token
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      // Obtenir l'utilisateur actuel pour forcer la validation du token
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
       
-      if (sessionError || !session) {
+      if (userError || !user) {
         throw new Error('Vous devez être connecté pour effectuer cette action');
       }
 
-      // Obtenir l'URL et la clé Supabase
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+      // Obtenir la session actuelle et rafraîchir si nécessaire
+      let { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !session || !session.access_token) {
+        // Essayer de rafraîchir la session
+        const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession();
+        
+        if (refreshError || !refreshedSession || !refreshedSession.access_token) {
+          throw new Error('Session expirée. Veuillez vous reconnecter.');
+        }
+        session = refreshedSession;
+      }
 
-      // Appeler la fonction Edge directement avec fetch pour s'assurer que le token est passé
-      const response = await fetch(`${supabaseUrl}/functions/v1/delete-user`, {
+      // S'assurer que le token est valide
+      if (!session?.access_token) {
+        throw new Error('Token d\'authentification manquant. Veuillez vous reconnecter.');
+      }
+
+      // Utiliser fetch directement pour garantir l'envoi du token dans les headers
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+      
+      if (!supabaseUrl || !supabaseAnonKey) {
+        throw new Error('Configuration Supabase manquante');
+      }
+
+      const functionUrl = `${supabaseUrl}/functions/v1/delete-user`;
+      
+      const response = await fetch(functionUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session.access_token}`,
-          'apikey': supabaseKey || '',
+          'apikey': supabaseAnonKey,
         },
         body: JSON.stringify({
           userId: userToDelete.user_id,
         }),
       });
 
-      const data = await response.json();
-
+      const result = await response.json();
+  
       if (!response.ok) {
-        // Vérifier si c'est une erreur 401 (non autorisé)
-        if (response.status === 401) {
-          throw new Error('Vous n\'avez pas les permissions nécessaires pour supprimer cet utilisateur');
+        // Vérifier si c'est une erreur JWT invalide
+        if (response.status === 401 || result.error?.includes('Invalid JWT') || result.error?.includes('JWT')) {
+          throw new Error('Token d\'authentification invalide ou expiré. Veuillez vous reconnecter.');
+        }
+        // Vérifier si c'est une erreur 403 (permissions)
+        if (response.status === 403) {
+          throw new Error('Vous n\'avez pas les permissions nécessaires pour supprimer un utilisateur');
         }
         // Vérifier si c'est une erreur de déploiement (502)
         if (response.status === 502) {
-          throw new Error('La fonction de suppression n\'est pas déployée. Veuillez déployer la fonction Edge "delete-user" avec: supabase functions deploy delete-user');
+          throw new Error('La fonction de suppression n\'est pas déployée. Veuillez déployer la fonction Edge "delete-user".');
         }
-        throw new Error(data.error || `Erreur ${response.status}: ${response.statusText}`);
+        throw new Error(result.error || `Erreur ${response.status}: ${response.statusText}`);
       }
-      
-      if (data?.error) throw new Error(data.error);
-
-      toast.success('Utilisateur supprimé avec succès');
+  
+      if (result?.error) {
+        throw new Error(result.error);
+      }
+  
+      toast.success("Utilisateur supprimé avec succès");
       setIsDeleteDialogOpen(false);
       setUserToDelete(null);
       fetchUsers();
       fetchUsageHistory();
+  
     } catch (error: any) {
-      console.error('Error deleting user:', error);
-      const errorMessage = error.message || 'Erreur lors de la suppression de l\'utilisateur';
-      toast.error(errorMessage, {
-        duration: 5000,
-      });
+      console.error("Error deleting user:", error);
+      toast.error(error.message || "Erreur lors de la suppression");
     } finally {
       setIsDeleting(false);
     }
   };
+  
 
   const getRoleBadgeVariant = (roleName: string) => {
     if (roleName === 'Admin') return 'default';
@@ -456,7 +500,7 @@ export default function UsersPage() {
                               >
                                 Modifier le rôle
                               </Button>
-                              {canDeleteUsers && (
+                              {/* {canDeleteUsers && (
                                 <Button
                                   variant="destructive"
                                   size="sm"
@@ -464,7 +508,7 @@ export default function UsersPage() {
                                 >
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
-                              )}
+                              )} */}
                             </div>
                           </TableCell>
                         </TableRow>

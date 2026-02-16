@@ -2,163 +2,140 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
 serve(async (req) => {
-  // Handle CORS preflight requests
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+  // ✅ CORS
+  if (req.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: corsHeaders });
   }
 
   try {
-    // Get the authorization header to verify the admin user
-    const authHeader = req.headers.get('Authorization');
+    // 🔐 Récupération du JWT
+    const authHeader = req.headers.get("authorization");
     if (!authHeader) {
-      console.error('No authorization header');
       return new Response(
-        JSON.stringify({ error: 'Non autorisé' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: "Missing Authorization header" }),
+        { status: 401, headers: corsHeaders }
       );
     }
 
-    // Create Supabase client with user's token to verify admin status
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-
-    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
-      auth: { persistSession: false },
-      global: { headers: { Authorization: authHeader } }
-    });
-
-    // Get the current user
-    const { data: { user: currentUser }, error: userError } = await userClient.auth.getUser();
-    if (userError || !currentUser) {
-      console.error('User auth error:', userError);
+    const token = authHeader.replace("Bearer ", "").trim();
+    if (!token) {
       return new Response(
-        JSON.stringify({ error: 'Non autorisé' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: "Invalid token format" }),
+        { status: 401, headers: corsHeaders }
       );
     }
 
-    // Check if user is admin using the service role client
-    const adminClient = createClient(supabaseUrl, supabaseServiceKey, {
-      auth: { persistSession: false }
-    });
+    // 🔑 Client ADMIN (service role)
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      { auth: { persistSession: false } }
+    );
 
-    // Get user's custom role and check permissions
-    const { data: roleData, error: roleError } = await adminClient
-      .from('user_roles')
-      .select('role, custom_role_id')
-      .eq('user_id', currentUser.id)
+    // ✅ VALIDATION DU JWT (LA BONNE MÉTHODE)
+    const {
+      data: { user: currentUser },
+      error: authError,
+    } = await supabase.auth.getUser(token);
+
+    if (authError || !currentUser) {
+      return new Response(
+        JSON.stringify({ error: "Invalid JWT" }),
+        { status: 401, headers: corsHeaders }
+      );
+    }
+
+    // 🔐 Vérification des permissions
+    const { data: roleData } = await supabase
+      .from("user_roles")
+      .select("role, custom_role_id")
+      .eq("user_id", currentUser.id)
       .single();
 
-    let hasManageUsersPermission = false;
+    let canManageUsers = roleData?.role === "admin";
 
-    // Check legacy admin role
-    if (roleData?.role === 'admin') {
-      hasManageUsersPermission = true;
-    }
-
-    // Check custom role permissions
-    if (roleData?.custom_role_id) {
-      const { data: customRole } = await adminClient
-        .from('custom_roles')
-        .select('permissions')
-        .eq('id', roleData.custom_role_id)
+    if (!canManageUsers && roleData?.custom_role_id) {
+      const { data: customRole } = await supabase
+        .from("custom_roles")
+        .select("permissions")
+        .eq("id", roleData.custom_role_id)
         .single();
 
-      if (customRole?.permissions?.can_manage_users) {
-        hasManageUsersPermission = true;
-      }
+      canManageUsers = !!customRole?.permissions?.can_manage_users;
     }
 
-    if (!hasManageUsersPermission) {
-      console.error('No manage users permission:', roleData);
+    if (!canManageUsers) {
       return new Response(
-        JSON.stringify({ error: 'Accès réservé aux administrateurs' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: "Accès réservé aux administrateurs" }),
+        { status: 403, headers: corsHeaders }
       );
     }
 
-    // Parse request body
+    // 📥 Payload
     const { email, password, name, customRoleId } = await req.json();
 
     if (!email || !password || !name) {
       return new Response(
-        JSON.stringify({ error: 'Tous les champs sont requis' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: "Tous les champs sont requis" }),
+        { status: 400, headers: corsHeaders }
       );
     }
 
-    console.log('Creating user:', email, name, customRoleId);
+    // 👤 Création utilisateur
+    const { data: created, error: createError } =
+      await supabase.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true,
+        user_metadata: { name },
+      });
 
-    // Create the user using admin API
-    const { data: newUser, error: createError } = await adminClient.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true,
-      user_metadata: { name }
-    });
-
-    if (createError) {
-      console.error('Create user error:', createError);
+    if (createError || !created.user) {
       return new Response(
-        JSON.stringify({ error: createError.message }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: createError?.message }),
+        { status: 400, headers: corsHeaders }
       );
     }
 
-    console.log('User created:', newUser.user?.id);
+    const newUserId = created.user.id;
 
-    // The trigger creates profile and default role, update with custom role if provided
-    if (newUser.user && customRoleId) {
-      // Wait a bit for the trigger to complete
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      const { error: updateRoleError } = await adminClient
-        .from('user_roles')
-        .update({ 
-          custom_role_id: customRoleId, 
-          assigned_by: currentUser.id 
-        })
-        .eq('user_id', newUser.user.id);
+    // ⏳ attendre le trigger profile
+    await new Promise((r) => setTimeout(r, 300));
 
-      if (updateRoleError) {
-        console.error('Update role error:', updateRoleError);
-      }
-    }
-
-    // Get role name for logging
-    let roleName = 'Non assigné';
+    // 🎭 Attribution rôle
     if (customRoleId) {
-      const { data: roleInfo } = await adminClient
-        .from('custom_roles')
-        .select('name')
-        .eq('id', customRoleId)
-        .single();
-      roleName = roleInfo?.name || roleName;
+      await supabase
+        .from("user_roles")
+        .update({
+          custom_role_id: customRoleId,
+          assigned_by: currentUser.id,
+        })
+        .eq("user_id", newUserId);
     }
 
-    // Log this action
-    await adminClient.from('usage_history').insert({
+    // 🧾 Historique
+    await supabase.from("usage_history").insert({
       user_id: currentUser.id,
-      action: 'Création utilisateur',
-      details: { created_user_email: email, assigned_role: roleName }
+      action: "Création utilisateur",
+      details: { created_user_email: email },
     });
 
     return new Response(
-      JSON.stringify({ success: true, user: newUser.user }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({ success: true, user: created.user }),
+      { status: 200, headers: corsHeaders }
     );
 
-  } catch (error) {
-    console.error('Unexpected error:', error);
+  } catch (err) {
+    console.error(err);
     return new Response(
-      JSON.stringify({ error: 'Erreur serveur' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({ error: "Erreur serveur" }),
+      { status: 500, headers: corsHeaders }
     );
   }
 });
